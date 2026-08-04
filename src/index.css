@@ -1,0 +1,479 @@
+@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hide number input spinners */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+@layer base {
+  :root {
+    /* ══════════════════════════════════════════════
+       IMAGO CLOUD — Design System v1.0
+       Primary: Imago Blue #144bb8 · hsl(220 80% 40%)
+       Font: Public Sans · Radius base: 4px
+       ══════════════════════════════════════════════ */
+
+    --background: 0 0% 99%;             /* branco puro, sem tint */
+    --foreground: 220 20% 10%;          /* quase preto, alto contraste */
+
+    --card: 0 0% 100%;                  /* branco puro */
+    --card-foreground: 222 20% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 20% 11%;
+
+    /* Primary — Imago Blue */
+    --primary: 220 80% 40%;            /* #144bb8 */
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 220 80% 35%;      /* #1040a0 */
+
+    /* Secondary — neutral gray */
+    --secondary: 220 7% 93%;
+    --secondary-foreground: 220 15% 25%;
+
+    --muted: 220 7% 93%;
+    --muted-foreground: 220 10% 40%;   /* mais contraste (era 45%) */
+
+    /* Accent — primary-tinted surface */
+    --accent: 220 60% 95%;
+    --accent-foreground: 220 80% 35%;
+
+    --destructive: 0 84% 60%;          /* #ef4444 */
+    --destructive-foreground: 0 0% 100%;
+
+    /* Status */
+    --success: 142 76% 36%;            /* #16a34a */
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;             /* #f59e0b */
+    --warning-foreground: 0 0% 100%;
+    --info: 220 80% 45%;
+    --info-foreground: 0 0% 100%;
+
+    /* Occurrence category colors */
+    --occurrence-administrativa: 262 60% 50%;   /* purple #7e51cc */
+    --occurrence-revisao_exame:  220 80% 40%;   /* Imago blue */
+    --occurrence-enfermagem:     160 60% 35%;   /* teal #24a083 */
+
+    --border: 220 13% 91%;             /* borda sutil */
+    --input: 220 13% 88%;
+    --ring: 220 80% 40%;
+
+    /* ── Radii — modern SaaS, 8px base ─────── */
+    --radius: 0.5rem;                  /* 8px  base → rounded-lg (buttons, inputs) */
+    --radius-md: 0.375rem;             /* 6px  → rounded-md */
+    --radius-lg: 0.5rem;               /* 8px  → rounded-lg */
+    --radius-xl: 0.75rem;              /* 12px → rounded-xl (tiles, panels) */
+    --radius-2xl: 1rem;                /* 16px → rounded-2xl (hero cards, hub) */
+
+    /* ── Shadows — profundidade sem drama ─── */
+    --shadow-sm:         0 1px 2px 0 rgb(0 0 0 / 0.06);
+    --shadow-md:         0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.08);
+    --shadow-lg:         0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.08);
+    --shadow-card:       0 0 0 1px rgb(0 0 0 / 0.04), 0 1px 4px 0 rgb(0 0 0 / 0.08);
+    --shadow-card-hover: 0 0 0 1px rgb(0 0 0 / 0.06), 0 8px 20px -4px rgb(0 0 0 / 0.12);
+    --shadow-primary:    0 10px 20px -6px rgb(20 75 184 / 0.25);
+
+    /* ── Sidebar — deep corporate navy ──────── */
+    --sidebar-background: 224 62% 16%;
+    --sidebar-foreground: 220 40% 88%;
+    --sidebar-primary: 220 80% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 224 60% 13%;
+    --sidebar-accent-foreground: 220 40% 88%;
+    --sidebar-border: 224 50% 18%;
+    --sidebar-ring: 220 80% 50%;
+  }
+
+  /* ── Dark mode — neutro suave, estilo Linear/GitHub ── */
+  .dark {
+    --background: 220 10% 8%;          /* #121418 — fundo escuro, neutro */
+    --foreground: 220 8% 93%;          /* branco suave, alto contraste */
+
+    --card: 220 9% 12%;                /* #181b21 — card distinguível do fundo */
+    --card-foreground: 220 8% 93%;
+
+    --popover: 220 9% 12%;
+    --popover-foreground: 220 8% 93%;
+
+    --primary: 220 75% 62%;            /* azul vivo, levemente dessaturado */
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 220 75% 68%;
+
+    --secondary: 220 8% 17%;
+    --secondary-foreground: 220 8% 80%;
+
+    --muted: 220 8% 15%;               /* superfície muda */
+    --muted-foreground: 220 7% 63%;    /* legível sem estourar */
+
+    --accent: 220 35% 22%;
+    --accent-foreground: 220 75% 80%;
+
+    --destructive: 0 68% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 8% 19%;              /* borda sutil mas presente */
+    --input: 220 8% 17%;
+    --ring: 220 75% 58%;
+
+    --sidebar-background: 220 9% 12%;
+    --sidebar-foreground: 220 8% 75%;
+    --sidebar-primary: 220 75% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 9% 10%;
+    --sidebar-accent-foreground: 220 8% 75%;
+    --sidebar-border: 220 8% 17%;
+    --sidebar-ring: 220 75% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Public Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+@layer utilities {
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  .shadow-card-hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+  .shadow-primary-glow {
+    box-shadow: var(--shadow-primary);
+  }
+
+  /* Custom Scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40 transition-colors;
+  }
+}
+
+@layer components {
+  /* ── Occurrence card ──────────────────────── */
+  .occurrence-card {
+    @apply relative overflow-hidden rounded-lg border border-border bg-card p-5
+           transition-colors duration-200 ease-in-out cursor-pointer;
+  }
+  .occurrence-card:hover {
+    @apply border-primary/30 bg-muted/40;
+  }
+  .occurrence-card::before {
+    content: '';
+    @apply absolute left-0 top-0 h-full w-1 transition-all duration-200;
+  }
+  .occurrence-card:hover::before {
+    @apply w-1.5;
+  }
+  .occurrence-card.revisao_exame::before {
+    background: hsl(var(--occurrence-revisao_exame));
+  }
+  .occurrence-card.enfermagem::before {
+    background: hsl(var(--occurrence-enfermagem));
+  }
+  .occurrence-card.administrativa::before {
+    background: hsl(var(--occurrence-administrativa));
+  }
+
+  /* ── Top nav ──────────────────────────────── */
+  .top-nav {
+    @apply sticky top-0 z-50 w-full border-b border-border bg-background;
+  }
+
+  /* ── Eyebrow — Imago signature label ─────── */
+  .eyebrow {
+    @apply text-xs font-bold uppercase text-primary;
+    letter-spacing: 0.2em;
+  }
+  .eyebrow-muted {
+    @apply text-[10px] font-semibold uppercase text-muted-foreground;
+    letter-spacing: 0.12em;
+  }
+}
+
+/* ── Totem ticker contínuo (uma direção, loop sem pausa) ── */
+@keyframes totem-ticker {
+  from { transform: translateX(0); }
+  to   { transform: translateX(var(--totem-ticker-dist, -100%)); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Dark mode — override global para classes Tailwind hardcoded
+   Força cards brancos, fundos claros e textos escuros a respeitarem o tema
+   navy quando `.dark` está ativo. Estratégia pragmática para remapear
+   centenas de ocorrências em feature modules sem editar arquivo por arquivo.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.dark .bg-white         { background-color: hsl(var(--card)) !important; }
+.dark .bg-white\/95     { background-color: hsl(var(--card) / 0.95) !important; }
+.dark .bg-white\/90     { background-color: hsl(var(--card) / 0.9) !important; }
+.dark .bg-white\/80     { background-color: hsl(var(--card) / 0.8) !important; }
+.dark .bg-white\/70     { background-color: hsl(var(--card) / 0.7) !important; }
+.dark .bg-white\/60     { background-color: hsl(var(--card) / 0.6) !important; }
+.dark .bg-white\/50     { background-color: hsl(var(--card) / 0.5) !important; }
+
+.dark .bg-gray-50,
+.dark .bg-slate-50,
+.dark .bg-zinc-50,
+.dark .bg-neutral-50,
+.dark .bg-stone-50      { background-color: hsl(var(--card)) !important; }
+
+.dark .bg-gray-100,
+.dark .bg-slate-100,
+.dark .bg-zinc-100,
+.dark .bg-neutral-100   { background-color: hsl(var(--muted)) !important; }
+
+.dark .bg-gray-200,
+.dark .bg-slate-200     { background-color: hsl(var(--muted)) !important; }
+
+/* Backgrounds com opacidade frequentemente usados */
+.dark .bg-gray-50\/50,
+.dark .bg-slate-50\/50  { background-color: hsl(var(--muted) / 0.3) !important; }
+
+/* Textos: cinzas claros (baixa relevância) → muted-foreground */
+.dark .text-gray-400,
+.dark .text-slate-400,
+.dark .text-zinc-400    { color: hsl(var(--muted-foreground)) !important; }
+
+.dark .text-gray-500,
+.dark .text-slate-500,
+.dark .text-zinc-500,
+.dark .text-neutral-500 { color: hsl(var(--muted-foreground)) !important; }
+
+.dark .text-gray-600,
+.dark .text-slate-600,
+.dark .text-zinc-600,
+.dark .text-neutral-600 { color: hsl(var(--muted-foreground)) !important; }
+
+/* Textos escuros (alto contraste) → foreground (claro no dark) */
+.dark .text-gray-700,
+.dark .text-slate-700,
+.dark .text-zinc-700,
+.dark .text-neutral-700 { color: hsl(var(--foreground)) !important; }
+
+.dark .text-gray-800,
+.dark .text-slate-800,
+.dark .text-zinc-800,
+.dark .text-neutral-800 { color: hsl(var(--foreground)) !important; }
+
+.dark .text-gray-900,
+.dark .text-slate-900,
+.dark .text-zinc-900,
+.dark .text-neutral-900 { color: hsl(var(--foreground)) !important; }
+
+.dark .text-black       { color: hsl(var(--foreground)) !important; }
+
+/* Borders */
+.dark .border-gray-100,
+.dark .border-slate-100,
+.dark .border-zinc-100,
+.dark .border-gray-200,
+.dark .border-slate-200,
+.dark .border-zinc-200  { border-color: hsl(var(--border)) !important; }
+
+.dark .border-gray-300,
+.dark .border-slate-300,
+.dark .border-zinc-300  { border-color: hsl(var(--border)) !important; }
+
+/* Hover backgrounds claros */
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-zinc-50:hover      { background-color: hsl(var(--muted) / 0.5) !important; }
+
+.dark .hover\:bg-gray-100:hover,
+.dark .hover\:bg-slate-100:hover,
+.dark .hover\:bg-zinc-100:hover     { background-color: hsl(var(--muted)) !important; }
+
+.dark .hover\:bg-gray-200:hover,
+.dark .hover\:bg-slate-200:hover    { background-color: hsl(var(--muted)) !important; }
+
+/* Divides */
+.dark .divide-gray-100 > *,
+.dark .divide-gray-200 > *,
+.dark .divide-slate-100 > *,
+.dark .divide-slate-200 > * { border-color: hsl(var(--border)) !important; }
+
+/* Shadcn cards já usam bg-card — mas reforça caso algum componente custom tenha perdido */
+.dark [class*="card"] .bg-white { background-color: hsl(var(--card)) !important; }
+
+/* Fundos zinc/neutral 50-200 (usados muito em cards de ocorrência, listas) */
+.dark .bg-zinc-50,
+.dark .bg-neutral-50,
+.dark .bg-stone-50       { background-color: hsl(var(--muted) / 0.5) !important; }
+.dark .bg-zinc-100,
+.dark .bg-neutral-100,
+.dark .bg-stone-100      { background-color: hsl(var(--muted)) !important; }
+.dark .bg-zinc-200,
+.dark .bg-neutral-200    { background-color: hsl(var(--muted)) !important; }
+
+.dark .border-zinc-100,
+.dark .border-neutral-100,
+.dark .border-zinc-200,
+.dark .border-neutral-200,
+.dark .border-zinc-300,
+.dark .border-neutral-300 { border-color: hsl(var(--border)) !important; }
+
+.dark .text-zinc-400,
+.dark .text-neutral-400,
+.dark .text-stone-400    { color: hsl(var(--muted-foreground)) !important; }
+.dark .text-zinc-500,
+.dark .text-neutral-500,
+.dark .text-stone-500    { color: hsl(var(--muted-foreground)) !important; }
+.dark .text-zinc-600,
+.dark .text-neutral-600,
+.dark .text-stone-600    { color: hsl(var(--muted-foreground)) !important; }
+.dark .text-zinc-700,
+.dark .text-neutral-700,
+.dark .text-stone-700    { color: hsl(var(--foreground)) !important; }
+.dark .text-zinc-800,
+.dark .text-neutral-800,
+.dark .text-stone-800    { color: hsl(var(--foreground)) !important; }
+.dark .text-zinc-900,
+.dark .text-neutral-900,
+.dark .text-stone-900    { color: hsl(var(--foreground)) !important; }
+
+/* Fundos coloridos leves (amber-50, green-50, red-50, blue-50) → versões escuras transparentes */
+.dark .bg-red-50         { background-color: hsl(0 62% 25% / 0.3) !important; }
+.dark .bg-red-100        { background-color: hsl(0 62% 30% / 0.4) !important; }
+.dark .bg-green-50       { background-color: hsl(142 70% 25% / 0.3) !important; }
+.dark .bg-green-100      { background-color: hsl(142 70% 28% / 0.4) !important; }
+.dark .bg-emerald-50     { background-color: hsl(160 70% 25% / 0.3) !important; }
+.dark .bg-amber-50       { background-color: hsl(38 80% 25% / 0.3) !important; }
+.dark .bg-amber-100      { background-color: hsl(38 80% 30% / 0.4) !important; }
+.dark .bg-yellow-50      { background-color: hsl(50 80% 25% / 0.3) !important; }
+.dark .bg-blue-50        { background-color: hsl(220 80% 25% / 0.4) !important; }
+.dark .bg-blue-100       { background-color: hsl(220 80% 30% / 0.45) !important; }
+.dark .bg-indigo-50      { background-color: hsl(230 70% 25% / 0.3) !important; }
+.dark .bg-purple-50      { background-color: hsl(270 70% 25% / 0.3) !important; }
+.dark .bg-pink-50        { background-color: hsl(330 70% 25% / 0.3) !important; }
+.dark .bg-teal-50        { background-color: hsl(180 70% 25% / 0.3) !important; }
+.dark .bg-cyan-50        { background-color: hsl(190 70% 25% / 0.3) !important; }
+.dark .bg-orange-50      { background-color: hsl(25 80% 25% / 0.3) !important; }
+.dark .bg-orange-100     { background-color: hsl(25 80% 30% / 0.4) !important; }
+.dark .bg-sky-50         { background-color: hsl(200 80% 20% / 0.4) !important; }
+.dark .bg-sky-100        { background-color: hsl(200 80% 25% / 0.5) !important; }
+.dark .bg-violet-50      { background-color: hsl(260 70% 25% / 0.35) !important; }
+.dark .bg-violet-100     { background-color: hsl(260 70% 30% / 0.45) !important; }
+.dark .bg-slate-100,
+.dark .bg-slate-200      { background-color: hsl(var(--card)) !important; }
+.dark .bg-slate-300      { background-color: hsl(var(--muted)) !important; }
+.dark .border-sky-100,
+.dark .border-sky-200,
+.dark .border-violet-100,
+.dark .border-violet-200,
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300  { border-color: hsl(var(--border)) !important; }
+.dark .text-sky-600,
+.dark .text-sky-700,
+.dark .text-sky-800      { color: hsl(200 80% 75%) !important; }
+.dark .text-violet-600,
+.dark .text-violet-700,
+.dark .text-violet-800   { color: hsl(260 75% 78%) !important; }
+.dark .text-slate-500,
+.dark .text-slate-600,
+.dark .text-slate-700    { color: hsl(var(--muted-foreground)) !important; }
+
+/* Text escuros em tons coloridos → versões claras no dark */
+.dark .text-red-700,
+.dark .text-red-800,
+.dark .text-red-900      { color: hsl(0 80% 75%) !important; }
+.dark .text-green-700,
+.dark .text-green-800,
+.dark .text-green-900    { color: hsl(142 60% 70%) !important; }
+.dark .text-emerald-700,
+.dark .text-emerald-800,
+.dark .text-emerald-900  { color: hsl(160 60% 70%) !important; }
+.dark .text-amber-700,
+.dark .text-amber-800,
+.dark .text-amber-900    { color: hsl(38 80% 70%) !important; }
+.dark .text-yellow-700,
+.dark .text-yellow-800,
+.dark .text-yellow-900   { color: hsl(50 80% 70%) !important; }
+.dark .text-blue-700,
+.dark .text-blue-800,
+.dark .text-blue-900     { color: hsl(220 80% 75%) !important; }
+.dark .text-indigo-700,
+.dark .text-indigo-800,
+.dark .text-indigo-900   { color: hsl(230 70% 75%) !important; }
+.dark .text-purple-700,
+.dark .text-purple-800,
+.dark .text-purple-900   { color: hsl(270 70% 75%) !important; }
+.dark .text-pink-700,
+.dark .text-pink-800,
+.dark .text-pink-900     { color: hsl(330 70% 75%) !important; }
+.dark .text-teal-700,
+.dark .text-teal-800,
+.dark .text-teal-900     { color: hsl(180 70% 70%) !important; }
+.dark .text-cyan-700,
+.dark .text-cyan-800,
+.dark .text-cyan-900     { color: hsl(190 70% 70%) !important; }
+.dark .text-orange-700,
+.dark .text-orange-800,
+.dark .text-orange-900   { color: hsl(25 80% 72%) !important; }
+
+/* Rose/pink tones (usados em enfermagem) */
+.dark .bg-rose-50        { background-color: hsl(340 70% 25% / 0.3) !important; }
+.dark .bg-rose-100       { background-color: hsl(340 70% 30% / 0.4) !important; }
+.dark .bg-pink-100       { background-color: hsl(330 70% 30% / 0.4) !important; }
+.dark .bg-pink-200       { background-color: hsl(330 70% 35% / 0.5) !important; }
+.dark .text-rose-700,
+.dark .text-rose-800,
+.dark .text-rose-900     { color: hsl(340 75% 75%) !important; }
+.dark .border-rose-100,
+.dark .border-rose-200,
+.dark .border-pink-100,
+.dark .border-pink-200   { border-color: hsl(var(--border)) !important; }
+
+/* Fundos com opacidade usados em cards (check-in, marketing) */
+.dark .bg-white\/60,
+.dark .bg-white\/50      { background-color: hsl(var(--card) / 0.6) !important; }
+.dark .bg-slate-50\/60,
+.dark .bg-slate-50\/40,
+.dark .bg-slate-50\/50   { background-color: hsl(var(--muted) / 0.5) !important; }
+.dark .bg-red-50\/60,
+.dark .bg-red-50\/50     { background-color: hsl(0 62% 25% / 0.35) !important; }
+.dark .bg-blue-50\/30,
+.dark .bg-blue-50\/50    { background-color: hsl(220 80% 30% / 0.4) !important; }
+.dark .bg-green-50\/50   { background-color: hsl(142 70% 28% / 0.4) !important; }
+
+/* hover:bg-*-50 com opacidade */
+.dark .hover\:bg-blue-50\/30:hover,
+.dark .hover\:bg-blue-50\/50:hover,
+.dark .hover\:bg-blue-50:hover       { background-color: hsl(220 80% 30% / 0.3) !important; }
+.dark .hover\:bg-slate-50\/40:hover,
+.dark .hover\:bg-slate-50:hover      { background-color: hsl(var(--muted) / 0.5) !important; }
+
+/* Borders coloridas leves (red-100, red-200, slate-100 etc) */
+.dark .border-red-100,
+.dark .border-red-200    { border-color: hsl(0 62% 40% / 0.5) !important; }
+.dark .border-slate-100,
+.dark .border-slate-200  { border-color: hsl(var(--border)) !important; }
+.dark .hover\:border-blue-400:hover { border-color: hsl(var(--primary)) !important; }
+
+/* Gradientes que começam/terminam em branco ou cinza claro */
+.dark .from-white        { --tw-gradient-from: hsl(var(--card)) !important; }
+.dark .to-white          { --tw-gradient-to: hsl(var(--card)) !important; }
+.dark .via-white         { --tw-gradient-via: hsl(var(--card)) !important; }
+.dark .from-gray-50      { --tw-gradient-from: hsl(var(--muted)) !important; }
+.dark .from-slate-50     { --tw-gradient-from: hsl(var(--muted)) !important; }

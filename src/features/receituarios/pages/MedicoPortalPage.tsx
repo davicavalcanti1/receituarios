@@ -107,7 +107,7 @@ function AssinaturaCanvas({ existing, onSave, onClear, saved }: {
 
 // ── Detalhe ───────────────────────────────────────────────────────────────────
 function LoteDetalhe({ lote, perfil, onBack, onSigned }: {
-  lote: Lote; perfil: { full_name?: string; crm?: string; signature_data?: string } | null;
+  lote: Lote; perfil: { full_name?: string; crm?: string; especialidade?: string; signature_data?: string } | null;
   onBack: () => void; onSigned: () => void;
 }) {
   const qc = useQueryClient();

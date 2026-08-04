@@ -42,6 +42,15 @@ CREATE POLICY "medico_invite_tokens_select_tenant" ON public.medico_invite_token
   FOR SELECT TO authenticated
   USING (tenant_id = public.get_user_tenant_id(auth.uid()));
 
+-- O CadastroMedico valida o token SEM login (SELECT com anon key filtrando
+-- por token=eq). Restrito a convites vivos, mas ainda enumerável por quem
+-- tiver a anon key — Fase 1: trocar por RPC SECURITY DEFINER que recebe o
+-- token e devolve só a validade.
+DROP POLICY IF EXISTS "medico_invite_tokens_select_anon" ON public.medico_invite_tokens;
+CREATE POLICY "medico_invite_tokens_select_anon" ON public.medico_invite_tokens
+  FOR SELECT TO anon
+  USING (used_at IS NULL AND expires_at > now());
+
 DROP POLICY IF EXISTS "medico_invite_tokens_insert_tenant" ON public.medico_invite_tokens;
 CREATE POLICY "medico_invite_tokens_insert_tenant" ON public.medico_invite_tokens
   FOR INSERT TO authenticated

@@ -2,7 +2,9 @@
 
 Spinoff do módulo **Receituários** do sistema Controle Operacional (Imago), extraído em 04/ago/2026 para virar produto standalone — mesmo modelo do spinoff do Controle de Mídia.
 
-**Origem:** `davicavalcanti1/controleoperacional`, main em `d99db27`. Cópia fiel, sem adaptações — **ainda não é rodável** (ver "Dependências a recriar").
+**Origem:** `davicavalcanti1/controleoperacional`, main em `d99db27`.
+
+**Status: Fase 0 (scaffolding) concluída — o app RODA.** `npm run dev` (frontend em :5173) + `npm run server` (Express em :3001, proxy `/api` já configurado no Vite). Aponta pro Supabase da Imago via `.env` (gitignored — copiar de `.env.example`; server tem o próprio `server/.env` com a service role).
 
 ## O que o módulo faz
 
@@ -34,19 +36,23 @@ supabase/migrations/         # 4 arquivos, ver nota abaixo
 
 As migrations referenciam objetos do core do sistema que **não** vêm neste repo: `tenants`, `profiles`, `user_roles`, `role_permissions`, `get_user_tenant_id()`, trigger de criação de perfil. O scaffolding vai precisar recriá-los (ou re-baselinar tudo, como no controle-midia).
 
-## Dependências a recriar (por que não roda ainda)
+## Fase 0 — o que foi recriado (04/ago/2026)
 
-Imports `@/` que apontavam pro sistema:
+Todas as dependências `@/` que apontavam pro sistema de origem existem de novo aqui:
 
-- `@/integrations/supabase/client` — client Supabase
-- `@/shared/contexts/AuthContext` — auth + profile + roles
-- `@/components/layout/MainLayout`, `PageHeader` — shell
-- `@/components/ui/*` — shadcn: badge, button, card, input, textarea, tabs, form
-- `@/lib/utils` (cn), `@/lib/logger` (logError), `@/lib/dataBRT` (hojeBRT)
-- `@/assets/imago-logo.png` — logo no PDF e nas telas
-- `@/services/netris/atendimentos` (buscarAtendimentos) e `@/services/netris/client` (hojeISO, SITUACAO) — **integração NetRis via proxy do backend**; decidir se o produto standalone mantém (vira "integração com RIS" opcional?) ou se a importação fica só manual
-- Server: `../lib/supabase.js` (supabaseAdmin), express, zod, express-rate-limit
-- NPM: jspdf, @tanstack/react-query, react-hook-form + zod, sonner, date-fns, lucide-react
+- `@/integrations/supabase/client` — client próprio (sem xhrFetch, não há TVs antigas)
+- `@/shared/contexts/AuthContext` — copiado do controle-midia + campo `tenant` (derivado de `profile.tenant_id`, mesma interface do sistema de origem)
+- `@/components/layout/MainLayout` — **shell próprio leve** (topbar com logo + Sair), mesma interface de props do original, então as páginas não mudaram; `PageHeader` copiado verbatim
+- `@/components/ui/*` — shadcn copiados do sistema: button, badge, card, input, textarea, tabs, table, form, label
+- `@/lib/utils` (cn), `@/lib/logger`, `@/lib/dataBRT` — copiados verbatim
+- `@/assets/imago-logo.png` + `index.css`/`tailwind.config.ts` — design system Imago completo (tokens HSL, Public Sans)
+- `@/services/netris/*` — **copiados verbatim**; compilam, mas a aba "Buscar por data" chama `/api/netris/proxy`, que este server ainda NÃO expõe → erro em runtime. Decisão da Fase 1: virar "integração com RIS" opcional (portar o proxy) ou cair pra importação só manual
+- `src/pages/Login.tsx` — login e-mail+senha novo (o sistema de origem usava o Auth compartilhado)
+- `server/` — Express mínimo: `/api/health` + `/api/public/medico/cadastro` (json limit 2mb por causa da assinatura base64). Testado contra o banco real: token inválido → 400
+
+Rotas: `/login`, `/cadastro/medico?token=…`, `/receituarios`, `/receituarios/novo`, `/receituarios/medico`.
+
+Mudanças mínimas nos arquivos copiados (só pra compilar): tipo `especialidade` no perfil do MedicoPortal, import `Situacao` inexistente removido do netris/atendimentos.
 
 ## Notas de fronteira com o sistema de origem
 
