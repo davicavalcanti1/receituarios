@@ -1,0 +1,15 @@
+# .env fica FORA de propósito: se entrar no contexto, o Vite lê o arquivo local
+# e ignora os Build Args (VITE_*) do EasyPanel, assando a config da máquina de
+# desenvolvimento dentro da imagem.
+node_modules
+server/node_modules
+dist
+.git
+.env
+.env.*
+!.env.example
+supabase
+*.log
+.vscode
+.idea
+Thumbs.db

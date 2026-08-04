@@ -54,6 +54,14 @@ Rotas: `/login`, `/cadastro/medico?token=…`, `/receituarios`, `/receituarios/n
 
 Mudanças mínimas nos arquivos copiados (só pra compilar): tipo `especialidade` no perfil do MedicoPortal, import `Situacao` inexistente removido do netris/atendimentos.
 
+## Deploy (EasyPanel)
+
+Container único: o Express serve a API **e** o build do Vite (porta **3001**).
+
+- **Build Args** (Vite precisa em build time): `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_NETRIS_FILIAL_ID` (opcional, default 1)
+- **Environment** (runtime): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+- O `.env` local fica fora do contexto de propósito (`.dockerignore`) — senão o Vite ignora os Build Args.
+
 ## Notas de fronteira com o sistema de origem
 
 - Roles `medico_prescritor` e `medico` **continuam existindo no controleoperacional** (compartilhadas com Relatórios Médicos). Só o módulo saiu.
