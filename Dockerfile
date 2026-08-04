@@ -21,10 +21,15 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY server/package.json server/package-lock.json ./server/
-RUN cd server && npm ci --ignore-scripts
+# npm rebuild esbuild: o --ignore-scripts pula o postinstall que valida o
+# binário nativo que o tsx usa em runtime
+RUN cd server && npm ci --ignore-scripts && npm rebuild esbuild
 COPY server ./server
 COPY --from=build /app/dist ./dist
 
 # Env de runtime (configurar no EasyPanel): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 EXPOSE 3001
-CMD ["node", "--import", "tsx/esm", "server/src/index.ts"]
+# WORKDIR no server: o Node resolve --import tsx/esm a partir do cwd, e o tsx
+# vive em /app/server/node_modules (em /app não há node_modules)
+WORKDIR /app/server
+CMD ["node", "--import", "tsx/esm", "src/index.ts"]
