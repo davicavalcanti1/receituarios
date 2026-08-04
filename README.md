@@ -46,7 +46,7 @@ Todas as dependências `@/` que apontavam pro sistema de origem existem de novo 
 - `@/components/ui/*` — shadcn copiados do sistema: button, badge, card, input, textarea, tabs, table, form, label
 - `@/lib/utils` (cn), `@/lib/logger`, `@/lib/dataBRT` — copiados verbatim
 - `@/assets/imago-logo.png` + `index.css`/`tailwind.config.ts` — design system Imago completo (tokens HSL, Public Sans)
-- `@/services/netris/*` — **copiados verbatim**; compilam, mas a aba "Buscar por data" chama `/api/netris/proxy`, que este server ainda NÃO expõe → erro em runtime. Decisão da Fase 1: virar "integração com RIS" opcional (portar o proxy) ou cair pra importação só manual
+- `@/services/netris/*` — copiados verbatim. A aba "Buscar por data" funciona: o server expõe `GET /api/netris/atendimentos` (porte mínimo do backend de origem — paginação, chunks semanais paralelos, dedup, cache em memória 3min, auth por Bearer Supabase). O token NetRis fica só no server (`NETRIS_BASE_URL`/`NETRIS_TOKEN`). As demais funções do netris (`alterarSituacao` etc.) chamam `/api/netris/proxy/*`, que NÃO foi portado — nenhuma tela deste produto usa
 - `src/pages/Login.tsx` — login e-mail+senha novo (o sistema de origem usava o Auth compartilhado)
 - `server/` — Express mínimo: `/api/health` + `/api/public/medico/cadastro` (json limit 2mb por causa da assinatura base64). Testado contra o banco real: token inválido → 400
 
@@ -59,7 +59,7 @@ Mudanças mínimas nos arquivos copiados (só pra compilar): tipo `especialidade
 Container único: o Express serve a API **e** o build do Vite (porta **3001**).
 
 - **Build Args** (Vite precisa em build time): `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_NETRIS_FILIAL_ID` (opcional, default 1)
-- **Environment** (runtime): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+- **Environment** (runtime): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NETRIS_BASE_URL`, `NETRIS_TOKEN`, `NETRIS_FILIAL_ID`
 - O `.env` local fica fora do contexto de propósito (`.dockerignore`) — senão o Vite ignora os Build Args.
 
 ## Notas de fronteira com o sistema de origem

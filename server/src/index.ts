@@ -2,6 +2,7 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import medicoCadastroRoutes from "./routes/medico-cadastro.js";
+import netrisRoutes from "./routes/netris.js";
 
 const app = express();
 
@@ -10,6 +11,7 @@ app.use(express.json({ limit: "2mb" }));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/public/medico", medicoCadastroRoutes);
+app.use("/api/netris", netrisRoutes);
 
 // Em produção (container único) o Express também serve o build do Vite.
 // Em dev quem serve o front é o Vite (:5173) com proxy /api pra cá.
