@@ -1,5 +1,5 @@
 # ── Build do frontend ────────────────────────────────────────────────────────
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 
 # Vite precisa das VITE_* em build time — configurar como Build Args no EasyPanel
@@ -16,7 +16,8 @@ COPY . .
 RUN npm run build
 
 # ── Runtime: Express serve a API e o dist ────────────────────────────────────
-FROM node:20-alpine
+# node 22+: o supabase-js v2.89 (realtime-js) exige WebSocket nativo do Node
+FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
