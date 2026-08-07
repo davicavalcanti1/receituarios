@@ -6,6 +6,7 @@
 // no código da tela — agora vêm do que a clínica de fato usa.
 
 import { buscarAtendimentos } from "@/services/netris/atendimentos";
+import type { Atendimento } from "@/services/netris/types";
 
 export interface Opcao {
   /** O que é gravado no filtro. */
@@ -25,6 +26,8 @@ export interface OpcoesNetris {
   situacoes: Opcao[];
   totalAtendimentos: number;
   periodo: { de: string; ate: string };
+  /** Os atendimentos crus, para a tela contar ao vivo sem novo request. */
+  atendimentos: Atendimento[];
 }
 
 function contar(): Map<string, { rotulo: string; n: number }> {
@@ -91,6 +94,7 @@ export async function carregarOpcoesNetris(dias = 30): Promise<OpcoesNetris> {
     modalidades: paraLista(modalidades),
     situacoes:   paraLista(situacoes),
     totalAtendimentos: ats.length,
+    atendimentos: ats,
     periodo: { de, ate },
   };
 }

@@ -31,7 +31,9 @@ export interface FiltroNetris {
   termos_sala: string[];
   /** Casa no nome do convênio. Ex.: ["UNIMED"] */
   termos_convenio: string[];
-  /** idSituacao descartados. Ex.: [1, 5] = MARCADO e CANCELADO */
+  /** idSituacao que ENTRAM. Vazio = todas. */
+  situacoes: number[];
+  /** Legado: idSituacao descartados. Só vale quando `situacoes` está vazia. */
   situacoes_excluir: number[];
 }
 
@@ -45,6 +47,7 @@ export const FILTRO_VAZIO: FiltroNetris = {
   termos_medico: [],
   termos_sala: [],
   termos_convenio: [],
+  situacoes: [],
   situacoes_excluir: [],
 };
 
@@ -65,6 +68,7 @@ export function normalizarFiltro(bruto: unknown): FiltroNetris {
     termos_medico:     listaTexto(f.termos_medico),
     termos_sala:       listaTexto(f.termos_sala),
     termos_convenio:   listaTexto(f.termos_convenio),
+    situacoes:         listaNum(f.situacoes),
     situacoes_excluir: listaNum(f.situacoes_excluir),
   };
 }
@@ -104,7 +108,12 @@ function estaNaSelecao(selecionados: string[], valor: string | undefined): boole
 }
 
 export function atendimentoCasa(a: Atendimento, filtro: FiltroNetris): boolean {
-  if (filtro.situacoes_excluir.includes(a.situacaoId)) return false;
+  // Lista do que entra tem prioridade; sem ela, vale a lista legada do que sai.
+  if (filtro.situacoes.length > 0) {
+    if (!filtro.situacoes.includes(a.situacaoId)) return false;
+  } else if (filtro.situacoes_excluir.includes(a.situacaoId)) {
+    return false;
+  }
 
   // Exame, modalidade e o legado de termos são alternativas entre si: basta um
   // caminho reconhecer o atendimento.
