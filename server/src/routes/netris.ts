@@ -12,11 +12,11 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Integração opcional: com o NetRis desligado a rota responde 503 explicando,
 // em vez de um 500 genérico vindo do fetch.
-router.use((_req, res, next) => {
-  if (!netrisConfigurado()) {
+router.use(async (_req, res, next) => {
+  if (!(await netrisConfigurado())) {
     return res.status(503).json({
-      error: "Integração NetRis desativada neste ambiente",
-      detail: "Defina NETRIS_BASE_URL e NETRIS_TOKEN para habilitá-la. O módulo funciona sem ela, por importação manual.",
+      error: "Integração NetRis desativada",
+      detail: "Configure em Configurações → Integração. O módulo funciona sem ela, por importação manual.",
     });
   }
   next();

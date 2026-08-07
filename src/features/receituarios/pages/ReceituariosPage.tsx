@@ -391,8 +391,8 @@ export default function ReceituariosPage() {
           actions={
             <>
               {papel === "admin" && (
-                <Button variant="outline" onClick={() => navigate("/templates")} className="gap-2">
-                  <Settings2 className="h-4 w-4" /> Configurar receituários
+                <Button variant="outline" onClick={() => navigate("/configuracoes")} className="gap-2">
+                  <Settings2 className="h-4 w-4" /> Configurações
                 </Button>
               )}
               {papel === "admin" && <InviteButton />}

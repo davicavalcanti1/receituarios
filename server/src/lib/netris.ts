@@ -9,19 +9,72 @@
 //     (evita 504 do gateway); dedup por idAtendimentoProcedimento
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { rx } from "./supabase.js";
+
 export const NETRIS_FILIAL = process.env.NETRIS_FILIAL_ID ?? "1";
 
-const NETRIS_BASE  = process.env.NETRIS_BASE_URL ?? "";
-const NETRIS_TOKEN = process.env.NETRIS_TOKEN ?? "";
+export interface ConfigNetris {
+  baseUrl: string;
+  token: string;
+  filial: string;
+  ativo: boolean;
+  origem: "banco" | "env" | "nenhuma";
+}
+
+// Cache curto: a config é lida a cada request do NetRis, e ir ao banco toda vez
+// seria desperdício. 30s faz uma troca de token pela tela valer quase de imediato.
+let cacheCfg: { at: number; cfg: ConfigNetris } | null = null;
+const CACHE_CFG_MS = 30_000;
+
+export function invalidarConfigNetris() {
+  cacheCfg = null;
+}
 
 /**
- * O NetRis é uma integração OPCIONAL (Fase 5): o núcleo do produto funciona só
- * com importação manual (colar planilha / .csv). Sem NETRIS_BASE_URL e
- * NETRIS_TOKEN no ambiente, a integração fica desligada e a aba "Buscar por
- * data" nem aparece na interface.
+ * A integração é OPCIONAL: o núcleo do produto funciona só com importação
+ * manual. A configuração vem do banco (Configurações → Integração); não havendo
+ * linha lá, cai nas variáveis de ambiente, que era como funcionava antes.
  */
-export function netrisConfigurado(): boolean {
-  return Boolean(NETRIS_BASE && NETRIS_TOKEN);
+export async function configNetris(): Promise<ConfigNetris> {
+  if (cacheCfg && Date.now() - cacheCfg.at < CACHE_CFG_MS) return cacheCfg.cfg;
+
+  const temEnv = Boolean(process.env.NETRIS_BASE_URL && process.env.NETRIS_TOKEN);
+  let cfg: ConfigNetris = {
+    baseUrl: process.env.NETRIS_BASE_URL ?? "",
+    token:   process.env.NETRIS_TOKEN ?? "",
+    filial:  process.env.NETRIS_FILIAL_ID ?? "1",
+    ativo:   temEnv,
+    origem:  temEnv ? "env" : "nenhuma",
+  };
+
+  try {
+    const { data } = await rx
+      .from("integracoes")
+      .select("ativo, base_url, token, filial_id")
+      .eq("provedor", "netris")
+      .maybeSingle();
+
+    if (data?.base_url && data?.token) {
+      cfg = {
+        baseUrl: data.base_url,
+        token:   data.token,
+        filial:  data.filial_id || "1",
+        ativo:   Boolean(data.ativo),
+        origem:  "banco",
+      };
+    }
+  } catch (e: any) {
+    // Banco fora ou migration ainda não aplicada: segue com o env.
+    console.warn("[netris] não foi possível ler a config do banco:", e?.message);
+  }
+
+  cacheCfg = { at: Date.now(), cfg };
+  return cfg;
+}
+
+export async function netrisConfigurado(): Promise<boolean> {
+  const c = await configNetris();
+  return c.ativo && Boolean(c.baseUrl && c.token);
 }
 
 const PAGE_SIZE = 100;
@@ -60,7 +113,7 @@ function unwrapList(data: unknown): unknown[] {
   return [];
 }
 
-async function fetchChunkPaginado(dataInicial: string, dataFinal: string, filialId: string): Promise<unknown[]> {
+async function fetchChunkPaginado(dataInicial: string, dataFinal: string, filialId: string, cfg: ConfigNetris): Promise<unknown[]> {
   const all: unknown[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
     const params = new URLSearchParams({
@@ -70,13 +123,13 @@ async function fetchChunkPaginado(dataInicial: string, dataFinal: string, filial
       dataInicial: isoToBR(dataInicial),
       dataFinal:   isoToBR(dataFinal),
     });
-    const url = `${NETRIS_BASE}/netris/api/atendimentos?${params}`;
+    const url = `${cfg.baseUrl}/netris/api/atendimentos?${params}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
     let res: Response;
     try {
       res = await fetch(url, {
-        headers: { "Content-Type": "application/json", Authorization: NETRIS_TOKEN },
+        headers: { "Content-Type": "application/json", Authorization: cfg.token },
         signal: controller.signal,
       });
     } finally {
@@ -95,18 +148,19 @@ async function fetchChunkPaginado(dataInicial: string, dataFinal: string, filial
 }
 
 export async function fetchAtendimentosPaginados(dataInicial: string, dataFinal: string, filialId: string): Promise<unknown[]> {
-  if (!netrisConfigurado()) {
-    throw new Error("NetRis não configurado no servidor (NETRIS_BASE_URL / NETRIS_TOKEN ausentes)");
+  const cfg = await configNetris();
+  if (!cfg.ativo || !cfg.baseUrl || !cfg.token) {
+    throw new Error("NetRis não configurado — ver Configurações → Integração");
   }
 
   const chunks = chunkDateRange(dataInicial, dataFinal, CHUNK_DAYS);
-  if (chunks.length === 1) return fetchChunkPaginado(dataInicial, dataFinal, filialId);
+  if (chunks.length === 1) return fetchChunkPaginado(dataInicial, dataFinal, filialId, cfg);
 
   const all: unknown[] = [];
   const seen = new Set<string>();
   for (let i = 0; i < chunks.length; i += CHUNK_CONCURRENCY) {
     const lote = chunks.slice(i, i + CHUNK_CONCURRENCY);
-    const resultados = await Promise.all(lote.map(c => fetchChunkPaginado(c.start, c.end, filialId)));
+    const resultados = await Promise.all(lote.map(c => fetchChunkPaginado(c.start, c.end, filialId, cfg)));
     for (const items of resultados) {
       for (const item of items) {
         const id = String((item as Record<string, unknown>).idAtendimentoProcedimento ?? (item as Record<string, unknown>).id ?? "");

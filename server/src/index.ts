@@ -28,7 +28,8 @@ if (process.env.NODE_ENV === "production") {
 }
 
 const PORT = Number(process.env.PORT ?? 3001);
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`[receituarios-api] http://localhost:${PORT}`);
-  console.log(`[receituarios-api] integração NetRis: ${netrisConfigurado() ? "ligada" : "desligada (só importação manual)"}`);
+  const ligada = await netrisConfigurado().catch(() => false);
+  console.log(`[receituarios-api] integração NetRis: ${ligada ? "ligada" : "desligada (só importação manual)"}`);
 });

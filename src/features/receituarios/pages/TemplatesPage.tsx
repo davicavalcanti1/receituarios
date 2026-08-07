@@ -542,8 +542,9 @@ function Editor({ inicial, medicos, onVoltar }: {
 }
 
 // ── Página ───────────────────────────────────────────────────────────────────
-export default function TemplatesPage() {
-  const { papel } = useAuth();
+// Renderizado como aba de /configuracoes — sem MainLayout nem PageHeader
+// próprios, que vêm da página pai.
+export function ConfiguracaoReceituarios() {
   const [editando, setEditando] = useState<Template | null>(null);
 
   const { data: templates = [], isLoading } = useQuery({
@@ -561,31 +562,22 @@ export default function TemplatesPage() {
     },
   });
 
-  if (papel !== "admin") return <Navigate to="/receituarios" replace />;
-
   if (editando) {
-    return (
-      <MainLayout>
-        <div className="animate-fade-in">
-          <Editor inicial={editando} medicos={medicos} onVoltar={() => setEditando(null)} />
-        </div>
-      </MainLayout>
-    );
+    return <Editor inicial={editando} medicos={medicos} onVoltar={() => setEditando(null)} />;
   }
 
   return (
-    <MainLayout>
-      <div className="space-y-6 animate-fade-in">
-        <PageHeader
-          eyebrow="Configuração"
-          title="Receituários"
-          subtitle="Medicações, médico responsável e quais pacientes vêm do NetRis"
-          actions={
-            <Button onClick={() => setEditando(templateNovo())} className="gap-2">
-              <Plus className="h-4 w-4" /> Novo receituário
-            </Button>
-          }
-        />
+    <>
+      <div className="space-y-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <p className="text-sm text-muted-foreground max-w-xl">
+            Cada receituário define as medicações impressas, quem assina e quais
+            pacientes vêm do NetRis.
+          </p>
+          <Button onClick={() => setEditando(templateNovo())} className="gap-2">
+            <Plus className="h-4 w-4" /> Novo receituário
+          </Button>
+        </div>
 
         {isLoading ? (
           <div className="space-y-2">
@@ -638,6 +630,6 @@ export default function TemplatesPage() {
           </div>
         )}
       </div>
-    </MainLayout>
+    </>
   );
 }
