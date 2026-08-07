@@ -27,14 +27,41 @@ supabase/migrations/         # 4 arquivos, ver nota abaixo
 
 ### Migrations
 
-| Arquivo | Conteúdo |
-|---|---|
-| `20260526170000_receituarios_initial_structure.sql` | role `medico_prescritor`, bucket `receituarios-pdfs`, tabelas `prescription_*`, RLS por tenant |
-| `20260614000000_schema_manual_reconstruido.sql` | **RECONSTRUÇÃO INFERIDA** — no banco da Imago isso foi aplicado à mão, sem migration: `doctor_user_id`, colunas de assinatura em `profiles`, tabela `medico_invite_tokens`. Conferir contra o banco real antes de confiar |
-| `20260615000000_medico_rls_fix.sql` | policies pro médico assinar (jobs/items/storage/profile) |
-| `20260617000000_add_medico_role.sql` | role `medico` no enum |
+`supabase/migrations/20260807120000_schema_proprio_receituarios.sql` — **Fase 1**: cria o schema `receituarios` e corta a dependência do core da Imago. Ver "Independência" abaixo.
 
-As migrations referenciam objetos do core do sistema que **não** vêm neste repo: `tenants`, `profiles`, `user_roles`, `role_permissions`, `get_user_tenant_id()`, trigger de criação de perfil. O scaffolding vai precisar recriá-los (ou re-baselinar tudo, como no controle-midia).
+As 4 migrations antigas (schema `public`, era controleoperacional) foram movidas para `supabase/legado/` — já estão aplicadas no banco da Imago por outro repositório e não devem ser reaplicadas daqui. Ver `supabase/legado/README.md`.
+
+## Independência (Fase 1 — 07/ago/2026)
+
+O módulo passa a viver no schema Postgres **`receituarios`**, dentro do mesmo projeto Supabase da Imago. Some a dependência de `tenants`, `profiles`, `user_roles`, `role_permissions` e `get_user_tenant_id()`.
+
+**Continua compartilhado:** o `auth.users`. Login e criação de conta seguem no Auth da Imago, e o trigger `handle_new_user` do core continua criando uma linha em `public.profiles` para todo usuário novo — inclusive médicos que se cadastrarem aqui. A independência é de schema e dados, não de auth.
+
+| Antes (`public`) | Agora (`receituarios`) |
+|---|---|
+| `profiles` (crm, especialidade, signature_data…) | `medicos` |
+| `user_roles` + enum `app_role` | coluna `papel` em `usuarios` (`admin`/`operador`) |
+| `prescription_jobs` | `lotes` |
+| `prescription_job_items` | `lote_itens` |
+| `medico_invite_tokens` | `convites` (agora serve médico **e** staff) |
+| `prescription_templates` / `_procedure_mappings` / `_outputs` | não vieram — estavam com 0 linhas |
+| bucket `receituarios-pdfs`, path `<tenant>/<lote>/…` | bucket `receituarios`, path `<lote>/…` |
+
+Colunas em português; os **valores** de status seguem em inglês (`draft`, `imported`, `signature_pending`, `completed`…), idênticos aos de hoje, para não mexer nos mapas de label da UI.
+
+**RLS de verdade, por papel** (antes qualquer autenticado editava e deletava qualquer lote): staff vê todos os lotes, médico só os atribuídos a ele, delete só admin. Os helpers `eh_staff()`/`eh_admin()`/`eh_medico()` são `SECURITY DEFINER` de propósito — uma policy em `usuarios` não pode consultar `usuarios` sem recursão infinita.
+
+**Primeiro admin:** não dá para usar o padrão "1º usuário do auth vira admin" — o `auth.users` é compartilhado e já tem dezenas de contas da Imago. Em vez disso, o primeiro usuário **logado** que chamar a RPC `receituarios.bootstrap_admin()` vira admin, e só enquanto a tabela `usuarios` estiver vazia.
+
+**Convite:** a policy `anon` enumerável saiu. O cadastro público valida pela RPC `receituarios.validar_convite(token)`, que devolve só validade e tipo.
+
+### Para aplicar
+
+1. `supabase db push` (ou aplicar a migration pelo painel).
+2. **Obrigatório:** adicionar `receituarios` em Settings → API → **Exposed schemas**. Sem isso o PostgREST não enxerga nada e toda query volta 404.
+3. Logar com o usuário que será admin e chamar `bootstrap_admin()`.
+
+Fases 2 (copiar os 46 lotes / 603 itens), 3 (apontar o app) e 4 (mergear `chore-spinoff-receituarios` no controleoperacional) ainda não foram feitas — **o app continua lendo `public.prescription_*`**.
 
 ## Fase 0 — o que foi recriado (04/ago/2026)
 
