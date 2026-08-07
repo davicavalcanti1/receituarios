@@ -31,9 +31,19 @@ CREATE TRIGGER trg_tenants_updated_at BEFORE UPDATE ON receituarios.tenants
 -- O tenant da Imago reusa o MESMO uuid de public.tenants. Não há FK entre os
 -- dois (são mundos separados de propósito), mas o id igual facilita conferir
 -- dado dos dois lados enquanto a Imago e o standalone coexistirem.
-INSERT INTO receituarios.tenants (id, nome, slug)
-VALUES ('864440c5-a22c-4bad-9c54-58865f445df4', 'Clínica Imago', 'imago')
-ON CONFLICT (id) DO NOTHING;
+--
+-- Condicional (Fase 8): só semeia no banco DA IMAGO. Num projeto Supabase novo
+-- — uma instalação de outra clínica — não faz sentido nascer um tenant "Clínica
+-- Imago"; lá o tenant é criado pelo bootstrap_admin ou por provisionar_tenant.
+-- O sinal é o mesmo usado na Fase 2: a existência de public.prescription_jobs.
+DO $$
+BEGIN
+  IF to_regclass('public.prescription_jobs') IS NOT NULL THEN
+    INSERT INTO receituarios.tenants (id, nome, slug)
+    VALUES ('864440c5-a22c-4bad-9c54-58865f445df4', 'Clínica Imago', 'imago')
+    ON CONFLICT (id) DO NOTHING;
+  END IF;
+END $$;
 
 -- ── Coluna tenant_id + backfill ──────────────────────────────────────────────
 -- Em três passos por tabela: adiciona nullable, preenche, e só então trava com
@@ -275,12 +285,24 @@ BEGIN
 
   SELECT email INTO v_email FROM auth.users WHERE id = v_user;
 
-  INSERT INTO receituarios.tenants (nome, slug)
-  VALUES (
-    coalesce(nullif(p_tenant_nome, ''), 'Minha clínica'),
-    'principal-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)
-  )
-  RETURNING id INTO v_tenant;
+  -- Se já existe EXATAMENTE um tenant, o admin entra nele em vez de criar
+  -- outro. É o caso do banco da Imago: a Fase 2 copiou 46 lotes para o tenant
+  -- "Clínica Imago", mas não copiou staff nenhum — então a tabela de usuários
+  -- está vazia e o bootstrap roda. Criando um tenant novo, o primeiro admin
+  -- entraria num espaço vazio e não enxergaria lote nenhum.
+  SELECT id INTO v_tenant FROM receituarios.tenants LIMIT 2;
+  IF (SELECT count(*) FROM receituarios.tenants) <> 1 THEN
+    v_tenant := NULL;
+  END IF;
+
+  IF v_tenant IS NULL THEN
+    INSERT INTO receituarios.tenants (nome, slug)
+    VALUES (
+      coalesce(nullif(p_tenant_nome, ''), 'Minha clínica'),
+      'principal-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)
+    )
+    RETURNING id INTO v_tenant;
+  END IF;
 
   INSERT INTO receituarios.usuarios (id, tenant_id, nome, email, papel)
   VALUES (v_user, v_tenant, coalesce(nullif(p_nome, ''), split_part(v_email, '@', 1)), v_email, 'admin')

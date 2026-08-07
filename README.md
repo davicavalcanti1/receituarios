@@ -106,6 +106,22 @@ A integração deixou de ser obrigatória: **o núcleo do produto funciona só c
 
 Testado nos dois modos: desligado → `{"netris":false}` e 503 na rota; ligado → `{"netris":true}` e 401 (auth ainda guardando), não 503.
 
+## Instalação limpa + caminho para projeto próprio (Fase 8 — 07/ago/2026)
+
+Roteiro completo em **[`docs/MIGRAR-PROJETO.md`](docs/MIGRAR-PROJETO.md)** (escrito, **não executado**).
+
+O que ainda prende o módulo ao projeto da Imago é o **`auth.users`** — é por isso que a tela `SemAcesso` existe e que `bootstrap_admin` é travado. Vendendo para outra clínica, os médicos dela teriam conta no Auth da Imago.
+
+Para que `supabase db push` num projeto novo produza uma instalação **limpa**, e não uma cópia da Imago, os pedaços específicos do cliente viraram condicionais (o sinal é o mesmo da Fase 2: existir `public.prescription_jobs`):
+
+- o tenant "Clínica Imago" só é semeado no banco da Imago;
+- os templates do Dr. Félix / Dr. Igor idem — noutro cliente seriam dado de terceiro no banco errado;
+- `CREATE EXTENSION IF NOT EXISTS pgcrypto` garantido para banco em branco.
+
+**Bug corrigido aqui**, encontrado ao pensar na instalação limpa: `bootstrap_admin()` criava um tenant **novo** sempre. No banco da Imago isso quebraria o caso principal — a Fase 2 copia 46 lotes para o tenant "Clínica Imago" mas **não** copia staff, então a tabela de usuários fica vazia, o bootstrap roda, e o primeiro admin cairia num tenant vazio **sem enxergar lote nenhum**. Agora, se existe exatamente um tenant, o admin entra nele.
+
+---
+
 ## Multi-tenant próprio (Fase 7 — 07/ago/2026)
 
 Migration `20260807150000_multi_tenant.sql`. Reverte, de propósito, o "single-tenant por ora" das fases anteriores — o objetivo passou a ser **vender o módulo para outras clínicas**, e o custo previsto lá (uma migration com backfill) se paga aqui.

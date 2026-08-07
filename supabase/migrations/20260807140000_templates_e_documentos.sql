@@ -46,6 +46,18 @@ CREATE TRIGGER trg_templates_updated_at BEFORE UPDATE ON receituarios.templates
 
 -- Seed: reproduz EXATAMENTE o que estava em gerarPdf.ts, para o PDF sair
 -- idêntico ao de hoje. Os códigos batem com lotes.tipo, que já tem 46 linhas.
+--
+-- Condicional (Fase 8): só no banco DA IMAGO. Estes templates têm as medicações
+-- e os médicos de um cliente específico — numa instalação de outra clínica eles
+-- seriam lixo, e pior, dado de terceiro. Lá o admin cadastra os próprios; a tela
+-- de novo lote já trata a lista vazia.
+DO $$
+BEGIN
+IF to_regclass('public.prescription_jobs') IS NULL THEN
+  RAISE NOTICE 'Instalação limpa: templates de exemplo não semeados.';
+  RETURN;
+END IF;
+
 INSERT INTO receituarios.templates
   (codigo, nome, descricao, setor_fixo, derivar_setor, itens, com_outro, mostrar_medico, assinatura, ordem)
 VALUES
@@ -74,6 +86,7 @@ VALUES
     2
   )
 ON CONFLICT (codigo) DO NOTHING;
+END $$;
 
 -- ── Documentos (trilha de auditoria) ─────────────────────────────────────────
 

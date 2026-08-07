@@ -21,6 +21,10 @@
 --     .maybeSingle() em user_roles quando o usuário tem mais de uma role.
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- gen_random_uuid(): o Supabase já traz, mas num projeto novo em branco não
+-- custa garantir (Fase 8 — estas migrations precisam rodar sozinhas).
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE SCHEMA IF NOT EXISTS receituarios;
 
 -- PostgREST/Supabase precisa enxergar o schema. Além disto, é obrigatório
