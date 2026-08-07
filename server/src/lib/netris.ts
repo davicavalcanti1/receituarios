@@ -14,6 +14,16 @@ export const NETRIS_FILIAL = process.env.NETRIS_FILIAL_ID ?? "1";
 const NETRIS_BASE  = process.env.NETRIS_BASE_URL ?? "";
 const NETRIS_TOKEN = process.env.NETRIS_TOKEN ?? "";
 
+/**
+ * O NetRis é uma integração OPCIONAL (Fase 5): o núcleo do produto funciona só
+ * com importação manual (colar planilha / .csv). Sem NETRIS_BASE_URL e
+ * NETRIS_TOKEN no ambiente, a integração fica desligada e a aba "Buscar por
+ * data" nem aparece na interface.
+ */
+export function netrisConfigurado(): boolean {
+  return Boolean(NETRIS_BASE && NETRIS_TOKEN);
+}
+
 const PAGE_SIZE = 100;
 const MAX_PAGES = 50;
 const CHUNK_DAYS = 7;
@@ -85,7 +95,7 @@ async function fetchChunkPaginado(dataInicial: string, dataFinal: string, filial
 }
 
 export async function fetchAtendimentosPaginados(dataInicial: string, dataFinal: string, filialId: string): Promise<unknown[]> {
-  if (!NETRIS_BASE || !NETRIS_TOKEN) {
+  if (!netrisConfigurado()) {
     throw new Error("NetRis não configurado no servidor (NETRIS_BASE_URL / NETRIS_TOKEN ausentes)");
   }
 

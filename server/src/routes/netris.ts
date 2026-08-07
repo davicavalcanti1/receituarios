@@ -4,11 +4,23 @@
 import { Router } from "express";
 import { z } from "zod";
 import { requireSupabaseAuth } from "../middleware/auth.js";
-import { fetchAtendimentosCacheado, NETRIS_FILIAL } from "../lib/netris.js";
+import { fetchAtendimentosCacheado, netrisConfigurado, NETRIS_FILIAL } from "../lib/netris.js";
 
 const router = Router();
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Integração opcional: com o NetRis desligado a rota responde 503 explicando,
+// em vez de um 500 genérico vindo do fetch.
+router.use((_req, res, next) => {
+  if (!netrisConfigurado()) {
+    return res.status(503).json({
+      error: "Integração NetRis desativada neste ambiente",
+      detail: "Defina NETRIS_BASE_URL e NETRIS_TOKEN para habilitá-la. O módulo funciona sem ela, por importação manual.",
+    });
+  }
+  next();
+});
 
 router.get("/atendimentos", requireSupabaseAuth, async (req, res) => {
   try {

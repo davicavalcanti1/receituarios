@@ -16,7 +16,10 @@ import { hojeBRT } from "@/lib/dataBRT";
 
 export const NETRIS_BASE      = "/api/netris/proxy";
 export const NETRIS_PACS_BASE = "/api/netris/pacs"; // proxy autenticado → pacs.imagoradiologia.com.br/Netris-web
-export const NETRIS_FILIAL    = import.meta.env.VITE_NETRIS_FILIAL_ID as string;
+// Fase 5: a filial deixou de ser VITE_* (build time). Quem resolve o default é
+// o servidor, pela NETRIS_FILIAL_ID — assim o front não precisa de nenhuma env
+// do NetRis para ser buildado.
+export const NETRIS_FILIAL    = "";
 
 // ── IDs de situação (confirmados via API) ────────────────────────────────────
 // Confirmados via API real em 15/04/2026 (varredura de 1.036 atendimentos)

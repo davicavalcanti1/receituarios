@@ -28,6 +28,7 @@ import { hojeISO, SITUACAO } from "@/services/netris/client";
 import { gerarPdfLote } from "@/features/receituarios/lib/gerarPdf";
 import { receituariosService } from "@/features/receituarios/services/receituariosService";
 import { useAuth } from "@/shared/contexts/AuthContext";
+import { useConfig } from "@/lib/config";
 
 const TIPOS = [
   { id: "anestesia_dr_felix", label: "Anestesia Dr. Felix", desc: "Receituário de anestesia em lote" },
@@ -69,6 +70,8 @@ interface Medico { id: string; nome: string; crm: string | null; especialidade: 
 export default function NovoLoteReceituario() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { config } = useConfig();
+  const netrisLigado = config.integracoes.netris;
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [gerando, setGerando] = useState(false);
@@ -274,13 +277,19 @@ export default function NovoLoteReceituario() {
             <CardTitle className="text-base">{medicos.length > 0 ? "3." : "2."} Pacientes</CardTitle>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="netris">
+            {/* A aba do NetRis só existe se a integração estiver ligada no
+                servidor (Fase 5). Sem ela, a importação manual é a única via —
+                e é o caminho principal do produto. */}
+            <Tabs defaultValue={netrisLigado ? "netris" : "manual"}>
               <TabsList>
-                <TabsTrigger value="netris" className="gap-2"><Search className="h-4 w-4" /> Buscar por data</TabsTrigger>
+                {netrisLigado && (
+                  <TabsTrigger value="netris" className="gap-2"><Search className="h-4 w-4" /> Buscar por data</TabsTrigger>
+                )}
                 <TabsTrigger value="manual" className="gap-2"><ClipboardPaste className="h-4 w-4" /> Colar / CSV</TabsTrigger>
               </TabsList>
 
               {/* Busca no NetRis por data */}
+              {netrisLigado && (
               <TabsContent value="netris" className="space-y-3 pt-3">
                 {tipo === "longactil" ? (
                   <p className="text-sm text-muted-foreground">
@@ -315,6 +324,7 @@ export default function NovoLoteReceituario() {
                   )}
                 </div>
               </TabsContent>
+              )}
 
               {/* Colagem / CSV */}
               <TabsContent value="manual" className="space-y-3 pt-3">

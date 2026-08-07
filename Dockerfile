@@ -3,12 +3,12 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 # Vite precisa das VITE_* em build time — configurar como Build Args no EasyPanel
+# Fase 5: nenhuma env do NetRis aqui — a integração é resolvida em runtime,
+# via /api/config. Ligar/desligar não exige rebuild.
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_PUBLISHABLE_KEY
-ARG VITE_NETRIS_FILIAL_ID=1
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_PUBLISHABLE_KEY=$VITE_SUPABASE_PUBLISHABLE_KEY
-ENV VITE_NETRIS_FILIAL_ID=$VITE_NETRIS_FILIAL_ID
 
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts && npm rebuild esbuild @swc/core

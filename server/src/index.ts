@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import medicoCadastroRoutes from "./routes/medico-cadastro.js";
 import netrisRoutes from "./routes/netris.js";
+import configRoutes from "./routes/config.js";
+import { netrisConfigurado } from "./lib/netris.js";
 
 const app = express();
 
@@ -10,6 +12,7 @@ const app = express();
 app.use(express.json({ limit: "2mb" }));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
+app.use("/api/config", configRoutes);
 app.use("/api/public/medico", medicoCadastroRoutes);
 app.use("/api/netris", netrisRoutes);
 
@@ -27,4 +30,5 @@ if (process.env.NODE_ENV === "production") {
 const PORT = Number(process.env.PORT ?? 3001);
 app.listen(PORT, () => {
   console.log(`[receituarios-api] http://localhost:${PORT}`);
+  console.log(`[receituarios-api] integração NetRis: ${netrisConfigurado() ? "ligada" : "desligada (só importação manual)"}`);
 });

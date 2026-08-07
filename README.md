@@ -95,7 +95,24 @@ O client Supabase passou a usar `db: { schema: "receituarios" }` — isso vale s
 
 Typecheck limpo no front e no server; `npm run build` passa.
 
-Falta a Fase 4 (mergear `chore-spinoff-receituarios` no controleoperacional) — **só depois de validar este app contra o banco novo**, senão a Imago e o standalone gravam em lugares diferentes.
+## NetRis opcional (Fase 5 — 07/ago/2026)
+
+A integração deixou de ser obrigatória: **o núcleo do produto funciona só com importação manual** (colar planilha / `.csv`), que é o caminho principal. O NetRis fica atrás de configuração.
+
+- **Ligado/desligado é decisão de runtime, não de build.** `GET /api/config` devolve `{ integracoes: { netris: bool } }` a partir de `NETRIS_BASE_URL` + `NETRIS_TOKEN`. Antes isso dependia de `VITE_*` embutida no bundle, então ligar ou desligar exigia **rebuildar a imagem**; agora é env var + restart.
+- Sem a integração, a aba "Buscar por data" **não é renderizada** e `/api/netris/*` responde **503** com explicação, em vez de um 500 genérico.
+- O frontend não precisa mais de **nenhuma** variável do NetRis: `VITE_NETRIS_FILIAL_ID` saiu do `.env.example` e dos Build Args do Dockerfile. Quem resolve a filial é o servidor, pela `NETRIS_FILIAL_ID`.
+- Se `/api/config` falhar, o padrão é integração **desligada** — o núcleo continua funcionando.
+
+Testado nos dois modos: desligado → `{"netris":false}` e 503 na rota; ligado → `{"netris":true}` e 401 (auth ainda guardando), não 503.
+
+---
+
+## Fase 4 (concluída 07/ago/2026)
+
+`chore-spinoff-receituarios` mergeada na main do controleoperacional (`8231143`): o módulo saiu do sistema da Imago (−2.591 linhas, zero import órfão). A CI de lá **não faz deploy** — só lint/build/typecheck —, então o merge não tirou nada do ar; o que tira é o redeploy manual no EasyPanel.
+
+> ⚠️ **Não redeployar a Imago** antes de validar este standalone contra o banco: hoje o sistema no ar ainda emite receituários gravando em `public.prescription_*`.
 
 ## Fase 0 — o que foi recriado (04/ago/2026)
 
