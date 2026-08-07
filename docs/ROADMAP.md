@@ -48,14 +48,11 @@ Mesmo dentro de uma clínica já ativa, um admin não consegue criar um operador
 O botão "Convidar médico" é o único que gera convite, e fixa `tipo: 'medico'`
 (`ReceituariosPage.tsx:33`). Resolve junto com o item 1.
 
-### 3. Templates só por SQL
+### 3. ~~Templates só por SQL~~ — FEITO em 07/ago
 
-A Fase 6 tirou Dr. Félix e Dr. Igor do código e pôs no banco, mas **não há tela
-de edição**. Numa clínica nova o `templates` nasce vazio (de propósito — seriam
-dados de terceiro), e a tela de novo lote mostra "Nenhum template cadastrado".
-
-Sem editor, cada cliente novo depende de você rodar `INSERT` à mão. É o item que
-mais trava a escala.
+Tela `/templates` (só admin): identificação, medicações, setor, bloco de
+assinatura, médico padrão e o filtro do NetRis. Com botão de **testar o filtro
+contra os atendimentos de hoje**, para não configurar às cegas.
 
 ### 4. Marca da Imago fixa no produto
 
@@ -63,14 +60,12 @@ mais trava a escala.
 cadastro e na tela SemAcesso. Para white-label de verdade, logo e nome precisam
 sair de `tenants` (ou de storage por tenant).
 
-### 5. Regra de negócio de um cliente dentro do código
+### 5. ~~Regra de negócio de um cliente dentro do código~~ — FEITO em 07/ago
 
-`ehEegIgorGondim()` (`NovoLoteReceituario.tsx`) filtra atendimentos do NetRis
-procurando literalmente `"IGOR"` + `"GONDIM"/"CASTRO"` no nome do médico. É
-regra da Imago hardcoded. Idem `ehAnestesia()` com o id de modalidade 3.
-
-Se o NetRis vai continuar sendo integração vendável, esses critérios têm de
-virar configuração (por template, provavelmente).
+`ehAnestesia()`, `ehEegIgorGondim()`, `SITUACOES_EXCLUIR`, o mapa de setor
+(`"RESSON"→RESSONÂNCIA`) e os rótulos por tipo saíram do código. Tudo que vem do
+NetRis é configurável por template: termos de exame, modalidades, médico, sala,
+convênio e situações descartadas — mais as regras de derivação de setor.
 
 ---
 

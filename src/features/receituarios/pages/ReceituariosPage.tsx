@@ -9,14 +9,15 @@ import { cn } from "@/lib/utils";
 import {
   AlertTriangle, Download, Files, Loader2, Plus,
   ScrollText, Stethoscope, Link2, ChevronRight,
-  ArrowLeft, Users, CheckCircle2, Clock, FileText,
+  ArrowLeft, Users, CheckCircle2, Clock, FileText, Settings2,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { receituariosService } from "@/features/receituarios/services/receituariosService";
-import { gerarPdfLote, gerarPdfLoteAssinado, listarTemplates, type TipoReceita } from "@/features/receituarios/lib/gerarPdf";
+import { gerarPdfLote, gerarPdfLoteAssinado, type TipoReceita } from "@/features/receituarios/lib/gerarPdf";
+import { listarTemplates } from "@/features/receituarios/lib/templates";
 import type { StatusLote } from "@/features/receituarios/types";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -142,7 +143,7 @@ function LoteDetalhe({ loteId, tipoLote, tituloLote, statusLote, onClose }: {
   // fixa no código.
   const { data: templates = [] } = useQuery({
     queryKey: ["templates"],
-    queryFn: listarTemplates,
+    queryFn: () => listarTemplates(),
     staleTime: 5 * 60_000,
   });
   const podePdf = templates.some(t => t.codigo === tipo);
@@ -389,6 +390,11 @@ export default function ReceituariosPage() {
           subtitle="Geração, revisão e assinatura digital de receitas em lote"
           actions={
             <>
+              {papel === "admin" && (
+                <Button variant="outline" onClick={() => navigate("/templates")} className="gap-2">
+                  <Settings2 className="h-4 w-4" /> Configurar receituários
+                </Button>
+              )}
               {papel === "admin" && <InviteButton />}
               <Button onClick={() => navigate("/receituarios/novo")} className="gap-2">
                 <Plus className="h-4 w-4" /> Novo lote

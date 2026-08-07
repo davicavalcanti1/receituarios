@@ -2,13 +2,6 @@
 // exigiria migrar 46 lotes e reescrever os mapas de label das telas sem ganho
 // nenhum.
 
-export const TIPOS_RECEITA = [
-  "anestesia_dr_felix",
-  "longactil",
-  "procedimentos_dia",
-  "custom",
-] as const;
-
 export const STATUS_LOTE = [
   "draft",
   "imported",
@@ -29,14 +22,13 @@ export const STATUS_ITEM = [
   "cancelled",
 ] as const;
 
-export type TipoReceita = (typeof TIPOS_RECEITA)[number];
 export type StatusLote  = (typeof STATUS_LOTE)[number];
 export type StatusItem  = (typeof STATUS_ITEM)[number];
 
 export interface Lote {
   id: string;
   titulo: string;
-  tipo: TipoReceita;
+  tipo: string;
   status: StatusLote;
   total_itens: number;
   itens_assinados: number;

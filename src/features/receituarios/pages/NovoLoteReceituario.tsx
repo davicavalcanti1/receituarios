@@ -24,8 +24,10 @@ import {
   CAMPOS_LOTE, type CampoLote, type ResultadoParse,
 } from "@/features/receituarios/lib/parseLote";
 import { buscarAtendimentos } from "@/services/netris/atendimentos";
-import { hojeISO, SITUACAO } from "@/services/netris/client";
-import { gerarPdfLote, listarTemplates } from "@/features/receituarios/lib/gerarPdf";
+import { hojeISO } from "@/services/netris/client";
+import { gerarPdfLote } from "@/features/receituarios/lib/gerarPdf";
+import { listarTemplates } from "@/features/receituarios/lib/templates";
+import { aplicarFiltro, descreverFiltro } from "@/features/receituarios/lib/filtroNetris";
 import { useQuery } from "@tanstack/react-query";
 import { receituariosService } from "@/features/receituarios/services/receituariosService";
 import { useAuth } from "@/shared/contexts/AuthContext";
@@ -41,27 +43,6 @@ const COL_LABELS: Record<CampoLote, string> = {
 
 // Colunas que a busca do NetRis preenche (sem "setor", que é regra posterior).
 const COLUNAS_NETRIS: CampoLote[] = ["data_exame", "horario", "paciente", "procedimento", "situacao", "convenio", "sala", "medico"];
-
-// Um atendimento é "de anestesia" se o procedimento cita anestesia ou a
-// modalidade NetRis é Anestesia (id 3).
-function ehAnestesia(exame: string | undefined, modalidadeId: number | undefined): boolean {
-  return (exame ?? "").toUpperCase().includes("ANESTESIA") || modalidadeId === 3;
-}
-
-// Um atendimento é de EEG do Dr. Igor Gondim se:
-//   - o nome do exame contém "ELETROENCEFALOGRAMA" ou "EEG", E
-//   - o nome do médico contém "IGOR" e ("GONDIM" ou "CASTRO")
-function ehEegIgorGondim(exame: string | undefined, medico: string | undefined): boolean {
-  const ex  = (exame  ?? "").toUpperCase();
-  const med = (medico ?? "").toUpperCase();
-  const isEeg    = ex.includes("ELETROENCEFALOGRAMA") || ex.includes("EEG");
-  const isIgor   = med.includes("IGOR") && (med.includes("GONDIM") || med.includes("CASTRO"));
-  return isEeg && isIgor;
-}
-
-// Situações descartadas na busca: apenas marcados simples (futuro sem confirmação)
-// e cancelados. A_CONFIRMAR e CONFIRMADO entram porque já têm data definida.
-const SITUACOES_EXCLUIR: number[] = [SITUACAO.MARCADO, SITUACAO.CANCELADO];
 
 interface Medico { id: string; nome: string; crm: string | null; especialidade: string | null; }
 
@@ -80,9 +61,10 @@ export default function NovoLoteReceituario() {
 
   const { data: templates = [] } = useQuery({
     queryKey: ["templates"],
-    queryFn: listarTemplates,
+    queryFn: () => listarTemplates(),
     staleTime: 5 * 60_000,
   });
+  const tipoAtual = templates.find(t => t.codigo === tipo);
 
   // Seletor de médico
   const [medicos, setMedicos] = useState<Medico[]>([]);
@@ -141,10 +123,9 @@ export default function NovoLoteReceituario() {
     try {
       const ats = await buscarAtendimentos({ dataInicial, dataFinal });
 
-      // Filtra de acordo com o tipo de receita selecionado
-      const filtrados = tipo === "longactil"
-        ? ats.filter(a => ehEegIgorGondim(a.exame, a.medico) && !SITUACOES_EXCLUIR.includes(a.situacaoId))
-        : ats.filter(a => ehAnestesia(a.exame, a.modalidadeId) && !SITUACOES_EXCLUIR.includes(a.situacaoId));
+      // Filtro vem do template (configurável na tela de Templates), não mais
+      // de regras hardcoded por tipo de receita.
+      const filtrados = tipoAtual ? aplicarFiltro(ats, tipoAtual.filtroNetris) : ats;
 
       const linhas = filtrados.map((a, i) => linhaDeValores(i + 1, {
         data_exame:   a.dataHora ?? "",
@@ -163,10 +144,9 @@ export default function NovoLoteReceituario() {
         ...resumoLinhas(linhas),
       });
       if (linhas.length === 0) {
-        const msgVazia = tipo === "longactil"
-          ? "Não há eletroencefalogramas do Dr. Igor Gondim no período selecionado."
-          : "Não há atendimentos de anestesia no período selecionado.";
-        toast("Nenhum resultado encontrado", { description: msgVazia });
+        toast("Nenhum resultado encontrado", {
+          description: `Nenhum atendimento no período casa com o filtro de "${tipoAtual?.nome ?? tipo}". Ajuste em Configurar receituários.`,
+        });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -214,7 +194,12 @@ export default function NovoLoteReceituario() {
             ) : templates.map(t => (
               <button
                 key={t.codigo}
-                onClick={() => setTipo(t.codigo)}
+                onClick={() => {
+                  setTipo(t.codigo);
+                  // Médico padrão do template já entra selecionado — é o que
+                  // evita repetir a escolha todo dia para o mesmo receituário.
+                  if (t.medicoPadraoId) setMedicoId(t.medicoPadraoId);
+                }}
                 className={cn(
                   "rounded-lg border px-4 py-3 text-left transition-colors",
                   tipo === t.codigo ? "border-sky-500 bg-sky-50 ring-1 ring-sky-500" : "hover:bg-muted/50",
@@ -300,17 +285,15 @@ export default function NovoLoteReceituario() {
               {/* Busca no NetRis por data */}
               {netrisLigado && (
               <TabsContent value="netris" className="space-y-3 pt-3">
-                {tipo === "longactil" ? (
-                  <p className="text-sm text-muted-foreground">
-                    Busca automaticamente os <strong>eletroencefalogramas</strong> do{" "}
-                    <strong>Dr. Igor Silveira de Castro Gondim</strong> no NetRis.
-                    Inclui situações A Confirmar e Confirmado. Apenas marcados simples e cancelados são descartados.
-                  </p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Escolha o período e busque automaticamente os atendimentos de <strong>anestesia</strong> no NetRis.
-                    Inclui situações A Confirmar e Confirmado. Apenas marcados simples e cancelados são descartados.
-                  </p>
+                {/* O texto descreve o filtro configurado, em vez de descrever
+                    um receituário específico como antes ("os EEG do Dr. Igor"). */}
+                <p className="text-sm text-muted-foreground">
+                  {tipoAtual
+                    ? <>Escolha o período e busque no NetRis os atendimentos que casam com o filtro de <strong>{tipoAtual.nome}</strong>.</>
+                    : "Selecione o tipo de receita no passo 1."}
+                </p>
+                {tipoAtual && (
+                  <p className="text-xs text-muted-foreground">{descreverFiltro(tipoAtual.filtroNetris)}</p>
                 )}
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="space-y-1">
@@ -325,7 +308,7 @@ export default function NovoLoteReceituario() {
                     <Button variant="outline" size="sm" onClick={() => { setDataInicial(hojeISO()); setDataFinal(hojeISO()); }}>Hoje</Button>
                     <Button onClick={buscarNoNetris} disabled={buscando || !tipo} className="gap-2">
                       {buscando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                      {buscando ? "Buscando…" : tipo === "longactil" ? "Buscar EEG Dr. Igor" : "Buscar anestesias"}
+                      {buscando ? "Buscando…" : "Buscar no NetRis"}
                     </Button>
                   </div>
                   {!tipo && (

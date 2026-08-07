@@ -11,6 +11,7 @@ import SemAcesso from "@/pages/SemAcesso";
 import ReceituariosPage from "@/features/receituarios/pages/ReceituariosPage";
 import NovoLoteReceituario from "@/features/receituarios/pages/NovoLoteReceituario";
 import MedicoPortalPage from "@/features/receituarios/pages/MedicoPortalPage";
+import TemplatesPage from "@/features/receituarios/pages/TemplatesPage";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -42,6 +43,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/receituarios" element={<RequireAuth><ReceituariosPage /></RequireAuth>} />
             <Route path="/receituarios/novo" element={<RequireAuth><NovoLoteReceituario /></RequireAuth>} />
             <Route path="/receituarios/medico" element={<RequireAuth><MedicoPortalPage /></RequireAuth>} />
+            <Route path="/templates" element={<RequireAuth><TemplatesPage /></RequireAuth>} />
             <Route path="*" element={<Navigate to="/receituarios" replace />} />
           </Routes>
         </BrowserRouter>

@@ -7,84 +7,19 @@ import jsPDF from "jspdf";
 import imagoLogo from "@/assets/imago-logo.png";
 import type { LinhaLote } from "./parseLote";
 import { hojeBRT } from "@/lib/dataBRT";
-import { supabase } from "@/integrations/supabase/client";
+import { carregarTemplate, type Template } from "./templates";
+import { derivarSetorPorRegras } from "./filtroNetris";
 
 /** Código do template (receituarios.templates.codigo). */
 export type TipoReceita = string;
 
-interface Assinatura { nome: string; cargo: string; crm: string; }
+export type { Template };
 
-/**
- * Fase 6: o template vem do banco (receituarios.templates), não mais de uma
- * constante. Antes, nome/cargo/CRM do Dr. Félix e do Dr. Igor e a lista de
- * medicações estavam fixos aqui — dados de UM cliente dentro do produto, o que
- * obrigaria outra clínica a forkar o código.
- */
-export interface Template {
-  codigo: string;
-  nome: string;
-  descricao?: string | null;
-  titulo: string;
-  setorFixo?: string | null;      // Longactil: setor é texto fixo
-  derivarSetor?: boolean;         // Anestesia: deriva do exame/sala
-  itens: string[];                // medicações com checkbox; "" = linha em branco
-  comOutro?: boolean;             // acrescenta a linha "OUTRO:____"
-  assinatura?: Assinatura | null; // bloco impresso sob a linha, no PDF sem assinatura digital
-  mostrarMedico?: boolean;        // imprime o campo "MÉDICO:"
-}
-
-function daLinhaDoBanco(row: any): Template {
-  return {
-    codigo:        row.codigo,
-    nome:          row.nome,
-    descricao:     row.descricao,
-    titulo:        row.titulo,
-    setorFixo:     row.setor_fixo,
-    derivarSetor:  row.derivar_setor,
-    itens:         Array.isArray(row.itens) ? row.itens : [],
-    comOutro:      row.com_outro,
-    mostrarMedico: row.mostrar_medico,
-    assinatura:    row.assinatura ?? null,
-  };
-}
-
-const cacheTemplates = new Map<string, Template>();
-
-export async function listarTemplates(): Promise<Template[]> {
-  const { data, error } = await supabase
-    .from("templates")
-    .select("*")
-    .eq("ativo", true)
-    .order("ordem");
-  if (error) throw error;
-  const templates = (data ?? []).map(daLinhaDoBanco);
-  for (const t of templates) cacheTemplates.set(t.codigo, t);
-  return templates;
-}
-
-export async function carregarTemplate(codigo: string): Promise<Template> {
-  const emCache = cacheTemplates.get(codigo);
-  if (emCache) return emCache;
-
-  const { data, error } = await supabase
-    .from("templates").select("*").eq("codigo", codigo).maybeSingle();
-  if (error) throw error;
-  if (!data) throw new Error(`Template "${codigo}" não encontrado`);
-
-  const tpl = daLinhaDoBanco(data);
-  cacheTemplates.set(codigo, tpl);
-  return tpl;
-}
-
-function derivarSetor(linha: LinhaLote): string {
+// O mapa "RESSON"→RESSONÂNCIA etc. saiu do código: agora são as regras de
+// setor do template, editáveis na tela de configuração.
+function derivarSetor(linha: LinhaLote, tpl: Template): string {
   if (linha.setor) return linha.setor;
-  const t = `${linha.sala} ${linha.procedimento}`.toUpperCase();
-  if (t.includes("RESSON")) return "RESSONÂNCIA";
-  if (t.includes("TOMO"))   return "TOMOGRAFIA";
-  if (t.includes("MAMO"))   return "MAMOGRAFIA";
-  if (t.includes("DENSITO")) return "DENSITOMETRIA";
-  if (t.includes("ULTRA") || t.includes("USG")) return "ULTRASSONOGRAFIA";
-  return "";
+  return derivarSetorPorRegras(`${linha.sala} ${linha.procedimento}`, tpl.setorRegras ?? []);
 }
 
 function dataHifen(d: string): string {
@@ -141,7 +76,7 @@ function desenharReceita(
   };
   campo("NOME DO PACIENTE:", linha.paciente);
   campo("DATA:", dataHifen(linha.data_exame));
-  campo("SETOR:", tpl.setorFixo ?? (tpl.derivarSetor ? derivarSetor(linha) : ""));
+  campo("SETOR:", tpl.setorFixo || (tpl.derivarSetor ? derivarSetor(linha, tpl) : ""));
   if (tpl.mostrarMedico) campo("MÉDICO:", linha.medico ?? "");
   y += 3;
 

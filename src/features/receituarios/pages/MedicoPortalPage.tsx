@@ -19,6 +19,7 @@ import imagoLogo from "@/assets/imago-logo.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, type Medico as MedicoCtx } from "@/shared/contexts/AuthContext";
 import { gerarPdfLoteAssinado } from "../lib/gerarPdf";
+import { listarTemplates } from "../lib/templates";
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface Lote {
@@ -39,10 +40,7 @@ const STATUS: Record<string, { label: string; color: string }> = {
   completed:         { label: "Assinado",             color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
 };
 
-const JOB_LABELS: Record<string, string> = {
-  anestesia_dr_felix: "Anestesia", longactil: "Longactil",
-  procedimentos_dia: "Procedimentos", custom: "Receituário",
-};
+
 
 /** SHA-256 do arquivo, em hex — a impressão digital guardada em `documentos`. */
 async function sha256Hex(blob: Blob): Promise<string> {
@@ -118,6 +116,14 @@ function LoteDetalhe({ lote, medico, onBack, onSigned }: {
   lote: Lote; medico: MedicoCtx | null;
   onBack: () => void; onSigned: () => void;
 }) {
+  // O rótulo do tipo vem do template no banco — antes era um mapa fixo aqui,
+  // que ficava desatualizado assim que alguém criava um receituário novo.
+  const { data: templates = [] } = useQuery({
+    queryKey: ["templates"],
+    queryFn: () => listarTemplates(),
+    staleTime: 5 * 60_000,
+  });
+  const nomeTemplate = templates.find(t => t.codigo === lote.tipo)?.nome;
   const qc = useQueryClient();
   const { user, tenantId, recarregar } = useAuth();
   const [signaturePng, setSignaturePng] = useState<string | null>(medico?.assinatura_png ?? null);
@@ -232,7 +238,7 @@ function LoteDetalhe({ lote, medico, onBack, onSigned }: {
           <ArrowLeft className="h-4 w-4" /> Voltar
         </Button>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-bold uppercase tracking-widest text-primary">{JOB_LABELS[lote.tipo] ?? "Lote"}</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-primary">{nomeTemplate ?? "Lote"}</p>
           <h2 className="text-lg font-extrabold tracking-tight text-foreground truncate">{lote.titulo}</h2>
         </div>
         <Badge className={st.color}>{st.label}</Badge>
