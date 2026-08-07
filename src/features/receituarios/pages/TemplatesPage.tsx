@@ -3,14 +3,18 @@
 // É a tela que tira do código o que era hardcoded: quais medicações entram no
 // PDF, qual médico assina, e QUAIS ATENDIMENTOS o NetRis traz. Antes, mudar o
 // médico da "Anestesia Dr. Félix" exigia editar gerarPdf.ts e fazer deploy.
+//
+// Tudo que vem do NetRis é ESCOLHIDO de uma lista carregada do próprio NetRis,
+// nunca digitado: um "ANASTESIA" com erro de grafia fazia o filtro não trazer
+// ninguém, em silêncio.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Navigate } from "react-router-dom";
 import {
-  Plus, Save, ArrowLeft, Loader2, ScrollText, Search,
-  Stethoscope, FlaskConical, AlertTriangle, CheckCircle2,
+  Plus, Save, ArrowLeft, Loader2, ScrollText, Search, RefreshCw,
+  Stethoscope, FlaskConical, AlertTriangle, CheckCircle2, X,
 } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -26,35 +30,14 @@ import { useConfig } from "@/lib/config";
 import {
   listarTemplates, salvarTemplate, templateNovo, type Template,
 } from "@/features/receituarios/lib/templates";
-import { aplicarFiltro, filtroVazio, type FiltroNetris } from "@/features/receituarios/lib/filtroNetris";
+import {
+  aplicarFiltro, filtroVazio, termosLegado, type FiltroNetris,
+} from "@/features/receituarios/lib/filtroNetris";
+import { carregarOpcoesNetris, type Opcao, type OpcoesNetris } from "@/features/receituarios/lib/opcoesNetris";
 import { buscarAtendimentos } from "@/services/netris/atendimentos";
-import { hojeISO, MODALIDADE, SITUACAO } from "@/services/netris/client";
+import { hojeISO } from "@/services/netris/client";
 
 interface MedicoOpcao { id: string; nome: string; crm: string | null }
-
-// Só as modalidades que aparecem em receituário — a lista inteira do NetRis
-// tem 16 e polui a tela.
-const MODALIDADES_COMUNS: Array<{ id: number; label: string }> = [
-  { id: MODALIDADE.ANESTESIA,            label: "Anestesia" },
-  { id: MODALIDADE.ELETROENCEFALOGRAMA,  label: "Eletroencefalograma" },
-  { id: MODALIDADE.RESSONANCIA,          label: "Ressonância" },
-  { id: MODALIDADE.TOMOGRAFIA,           label: "Tomografia" },
-  { id: MODALIDADE.USG,                  label: "Ultrassonografia" },
-  { id: MODALIDADE.BIOPSIA_US,           label: "Biópsia US" },
-  { id: MODALIDADE.MAMOGRAFIA,           label: "Mamografia" },
-];
-
-const SITUACOES_COMUNS: Array<{ id: number; label: string }> = [
-  { id: SITUACAO.MARCADO,      label: "Marcado (sem confirmação)" },
-  { id: SITUACAO.CANCELADO,    label: "Cancelado" },
-  { id: SITUACAO.A_CONFIRMAR,  label: "A confirmar" },
-  { id: SITUACAO.CONFIRMADO,   label: "Confirmado" },
-];
-
-// Listas de texto viram uma-por-linha no textarea: é o jeito mais direto de
-// editar sem inventar um componente de chips.
-const paraTexto = (l: string[]) => l.join("\n");
-const deTexto   = (t: string) => t.split("\n").map(s => s.trim()).filter(Boolean);
 
 function Campo({ label, dica, children }: { label: string; dica?: string; children: React.ReactNode }) {
   return (
@@ -81,6 +64,96 @@ function Marcavel({ ativo, onToggle, children }: { ativo: boolean; onToggle: () 
   );
 }
 
+// ── Seleção múltipla ─────────────────────────────────────────────────────────
+// A caixa de busca filtra a LISTA — não é onde se configura o valor. Sem ela,
+// uma clínica com 300 exames vira uma parede de opções.
+function Selecao({ titulo, dica, opcoes, selecionados, onChange }: {
+  titulo: string; dica?: string; opcoes: Opcao[];
+  selecionados: string[]; onChange: (v: string[]) => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const [verTodos, setVerTodos] = useState(false);
+
+  const filtradas = useMemo(() => {
+    const b = busca.trim().toLowerCase();
+    const base = b ? opcoes.filter(o => o.rotulo.toLowerCase().includes(b)) : opcoes;
+    return verTodos ? base : base.slice(0, 12);
+  }, [opcoes, busca, verTodos]);
+
+  const escolhidas = opcoes.filter(o => selecionados.includes(o.valor));
+  // Valor gravado que não apareceu no período carregado — não some da tela.
+  const orfaos = selecionados.filter(v => !opcoes.some(o => o.valor === v));
+
+  function alternar(valor: string) {
+    onChange(selecionados.includes(valor)
+      ? selecionados.filter(v => v !== valor)
+      : [...selecionados, valor]);
+  }
+
+  return (
+    <div className="rounded-lg border border-border p-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <p className="text-sm font-medium text-foreground">
+          {titulo}
+          {selecionados.length > 0 && (
+            <span className="ml-2 text-xs font-normal text-primary">{selecionados.length} selecionado(s)</span>
+          )}
+        </p>
+        {opcoes.length > 12 && (
+          <Input
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar na lista…"
+            className="h-7 w-44 text-xs"
+          />
+        )}
+      </div>
+      {dica && <p className="text-xs text-muted-foreground">{dica}</p>}
+
+      {escolhidas.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pb-1">
+          {escolhidas.map(o => (
+            <button
+              key={o.valor}
+              type="button"
+              onClick={() => alternar(o.valor)}
+              className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary px-2.5 py-1 text-xs text-primary"
+            >
+              {o.rotulo} <X className="h-3 w-3" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {orfaos.length > 0 && (
+        <p className="text-xs text-amber-600">
+          {orfaos.length} valor(es) selecionado(s) não apareceram no período carregado — continuam valendo.
+        </p>
+      )}
+
+      <div className="flex flex-wrap gap-1.5">
+        {filtradas.filter(o => !selecionados.includes(o.valor)).map(o => (
+          <button
+            key={o.valor}
+            type="button"
+            onClick={() => alternar(o.valor)}
+            className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted/50 hover:border-primary/40 transition-colors"
+          >
+            {o.rotulo}
+            <span className="ml-1 opacity-50">{o.ocorrencias}</span>
+          </button>
+        ))}
+      </div>
+
+      {!verTodos && opcoes.length > 12 && (
+        <button type="button" onClick={() => setVerTodos(true)} className="text-xs text-primary hover:underline">
+          ver todas as {opcoes.length} opções
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Editor ───────────────────────────────────────────────────────────────────
 function Editor({ inicial, medicos, onVoltar }: {
   inicial: Template; medicos: MedicoOpcao[]; onVoltar: () => void;
@@ -93,14 +166,17 @@ function Editor({ inicial, medicos, onVoltar }: {
   const [testando, setTestando] = useState(false);
   const [resultadoTeste, setResultadoTeste] = useState<{ total: number; casaram: number; exemplos: string[] } | null>(null);
 
+  const [dias, setDias] = useState(30);
+  const [carregando, setCarregando] = useState(false);
+  const [opcoes, setOpcoes] = useState<OpcoesNetris | null>(null);
+
   const novo = !t.id;
   const set = (patch: Partial<Template>) => setT(prev => ({ ...prev, ...patch }));
   const setFiltro = (patch: Partial<FiltroNetris>) =>
     setT(prev => ({ ...prev, filtroNetris: { ...prev.filtroNetris, ...patch } }));
 
-  function alternar(lista: number[], id: number): number[] {
-    return lista.includes(id) ? lista.filter(x => x !== id) : [...lista, id];
-  }
+  const legado = termosLegado(t.filtroNetris);
+  const semCriterio = filtroVazio(t.filtroNetris);
 
   async function salvar() {
     if (!t.nome.trim())   { toast.error("Dê um nome ao receituário"); return; }
@@ -118,8 +194,21 @@ function Editor({ inicial, medicos, onVoltar }: {
     } finally { setSalvando(false); }
   }
 
-  // Testar o filtro contra o NetRis de hoje. Sem isso, configurar filtro é às
-  // cegas — só se descobre o erro na hora de gerar o lote.
+  async function carregarOpcoes() {
+    setCarregando(true);
+    try {
+      const o = await carregarOpcoesNetris(dias);
+      setOpcoes(o);
+      if (o.totalAtendimentos === 0) {
+        toast("Nenhum atendimento no período", { description: "Tente um período maior." });
+      }
+    } catch (e: any) {
+      toast.error("Erro ao carregar opções do NetRis", { description: e?.message });
+    } finally { setCarregando(false); }
+  }
+
+  // Sem isso, configurar filtro é às cegas — só se descobre o erro na hora de
+  // gerar o lote.
   async function testarFiltro() {
     setTestando(true);
     setResultadoTeste(null);
@@ -136,8 +225,6 @@ function Editor({ inicial, medicos, onVoltar }: {
       toast.error("Erro ao consultar o NetRis", { description: e?.message });
     } finally { setTestando(false); }
   }
-
-  const semCriterio = filtroVazio(t.filtroNetris);
 
   return (
     <div className="space-y-5">
@@ -180,7 +267,7 @@ function Editor({ inicial, medicos, onVoltar }: {
           <Campo label="Ordem na lista">
             <Input type="number" value={t.ordem ?? 0} onChange={e => set({ ordem: Number(e.target.value) })} />
           </Campo>
-          <div className="sm:col-span-2 flex gap-2">
+          <div className="sm:col-span-2">
             <Marcavel ativo={t.ativo !== false} onToggle={() => set({ ativo: t.ativo === false })}>
               {t.ativo !== false ? "Ativo" : "Inativo"}
             </Marcavel>
@@ -225,7 +312,7 @@ function Editor({ inicial, medicos, onVoltar }: {
                 <Input
                   key={campo}
                   value={t.assinatura?.[campo] ?? ""}
-                  placeholder={{ nome: "FÉLIX SOARES NÓBREGA", cargo: "ANESTESIOLOGISTA", crm: "CRM-PB: 7608" }[campo]}
+                  placeholder={{ nome: "Nome do médico", cargo: "Especialidade", crm: "CRM-PB: 0000" }[campo]}
                   onChange={e => {
                     const base = t.assinatura ?? { nome: "", cargo: "", crm: "" };
                     const atualizado = { ...base, [campo]: e.target.value };
@@ -283,7 +370,7 @@ function Editor({ inicial, medicos, onVoltar }: {
           ) : (
             <Campo
               label="Regras de setor"
-              dica="Uma por linha, no formato TERMO = SETOR. Casa contra sala + procedimento; vence a primeira que casar. Se o atendimento já traz setor, ele tem prioridade."
+              dica="Uma por linha, no formato TERMO = SETOR. Casa contra sala + procedimento; vence a primeira. Se o atendimento já traz setor, ele tem prioridade."
             >
               <Textarea
                 value={t.setorRegras.map(r => `${r.termos.join(", ")} = ${r.setor}`).join("\n")}
@@ -303,7 +390,7 @@ function Editor({ inicial, medicos, onVoltar }: {
         </CardContent>
       </Card>
 
-      {/* Busca no NetRis */}
+      {/* Busca no NetRis — tudo por seleção */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -311,126 +398,142 @@ function Editor({ inicial, medicos, onVoltar }: {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!config.integracoes.netris && (
+          {!config.integracoes.netris ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-              A integração NetRis está desligada neste ambiente. A configuração fica guardada,
-              mas a busca por data não aparece no novo lote.
+              A integração NetRis está desligada neste ambiente. Sem ela não há de onde
+              carregar as opções — ligue-a no servidor para configurar esta parte.
             </div>
-          )}
-
-          <p className="text-xs text-muted-foreground">
-            Um atendimento entra quando: <strong>(casa algum termo de exame OU alguma modalidade)</strong>{" "}
-            <strong>E</strong> casa algum termo de médico (se houver) <strong>E</strong> a situação não está excluída.
-          </p>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Campo
-              label="Termos no nome do exame"
-              dica="Um por linha. Dentro de um termo, TODAS as palavras precisam aparecer; entre termos, basta um casar."
-            >
-              <Textarea
-                value={paraTexto(t.filtroNetris.termos_exame)}
-                onChange={e => setFiltro({ termos_exame: deTexto(e.target.value) })}
-                className="min-h-[90px] font-mono text-xs"
-                placeholder={"ANESTESIA"}
-              />
-            </Campo>
-
-            <Campo
-              label="Termos no nome do médico"
-              dica='Vazio = qualquer médico. "IGOR GONDIM" casa com "IGOR SILVEIRA DE CASTRO GONDIM".'
-            >
-              <Textarea
-                value={paraTexto(t.filtroNetris.termos_medico)}
-                onChange={e => setFiltro({ termos_medico: deTexto(e.target.value) })}
-                className="min-h-[90px] font-mono text-xs"
-                placeholder={"IGOR GONDIM\nIGOR CASTRO"}
-              />
-            </Campo>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Campo label="Termos no nome da sala" dica="Vazio = qualquer sala.">
-              <Textarea
-                value={paraTexto(t.filtroNetris.termos_sala)}
-                onChange={e => setFiltro({ termos_sala: deTexto(e.target.value) })}
-                className="min-h-[70px] font-mono text-xs"
-                placeholder={"RESSONANCIA"}
-              />
-            </Campo>
-
-            <Campo label="Termos no convênio" dica="Vazio = qualquer convênio.">
-              <Textarea
-                value={paraTexto(t.filtroNetris.termos_convenio)}
-                onChange={e => setFiltro({ termos_convenio: deTexto(e.target.value) })}
-                className="min-h-[70px] font-mono text-xs"
-                placeholder={"UNIMED"}
-              />
-            </Campo>
-          </div>
-
-          <Campo label="Modalidades" dica="Alternativa aos termos de exame: entra se casar por qualquer um dos dois.">
-            <div className="flex flex-wrap gap-2">
-              {MODALIDADES_COMUNS.map(m => (
-                <Marcavel
-                  key={m.id}
-                  ativo={t.filtroNetris.modalidades.includes(m.id)}
-                  onToggle={() => setFiltro({ modalidades: alternar(t.filtroNetris.modalidades, m.id) })}
-                >
-                  {m.label}
-                </Marcavel>
-              ))}
-            </div>
-          </Campo>
-
-          <Campo label="Situações descartadas" dica="Atendimentos nessas situações não entram no lote.">
-            <div className="flex flex-wrap gap-2">
-              {SITUACOES_COMUNS.map(s => (
-                <Marcavel
-                  key={s.id}
-                  ativo={t.filtroNetris.situacoes_excluir.includes(s.id)}
-                  onToggle={() => setFiltro({ situacoes_excluir: alternar(t.filtroNetris.situacoes_excluir, s.id) })}
-                >
-                  {s.label}
-                </Marcavel>
-              ))}
-            </div>
-          </Campo>
-
-          {semCriterio && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 px-3 py-2">
-              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-800 dark:text-amber-300">
-                Sem nenhum critério de exame, modalidade ou médico, <strong>todos</strong> os
-                atendimentos do dia entram no lote.
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Um atendimento entra quando: <strong>(é um dos exames OU de uma das modalidades)</strong>{" "}
+                <strong>E</strong> é de um dos médicos <strong>E</strong> de uma das salas{" "}
+                <strong>E</strong> de um dos convênios. Lista vazia = não restringe por aquele campo.
               </p>
-            </div>
-          )}
 
-          {/* Teste contra o NetRis real */}
-          {config.integracoes.netris && (
-            <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <p className="text-sm font-medium">Testar com os atendimentos de hoje</p>
-                <Button variant="outline" size="sm" onClick={testarFiltro} disabled={testando} className="gap-1.5">
-                  {testando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-                  Testar filtro
-                </Button>
-              </div>
-              {resultadoTeste && (
-                <div className="space-y-2">
-                  <p className="text-sm flex items-center gap-2">
-                    <CheckCircle2 className={cn("h-4 w-4", resultadoTeste.casaram > 0 ? "text-emerald-500" : "text-muted-foreground")} />
-                    <strong>{resultadoTeste.casaram}</strong> de {resultadoTeste.total} atendimentos de hoje casam.
+              <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-sm font-medium">Opções vindas do NetRis</p>
+                    <p className="text-xs text-muted-foreground">
+                      Carregue um período para escolher a partir do que a clínica realmente faz.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={dias}
+                      onChange={e => setDias(Number(e.target.value))}
+                      className="rounded-md border border-input bg-card px-2 py-1.5 text-xs"
+                    >
+                      {[7, 30, 60, 90].map(d => <option key={d} value={d}>últimos {d} dias</option>)}
+                    </select>
+                    <Button variant="outline" size="sm" onClick={carregarOpcoes} disabled={carregando} className="gap-1.5">
+                      {carregando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                      Carregar
+                    </Button>
+                  </div>
+                </div>
+                {opcoes && (
+                  <p className="text-xs text-muted-foreground">
+                    {opcoes.totalAtendimentos} atendimentos entre {opcoes.periodo.de} e {opcoes.periodo.ate} —{" "}
+                    {opcoes.exames.length} exames, {opcoes.medicos.length} médicos,{" "}
+                    {opcoes.salas.length} salas, {opcoes.convenios.length} convênios.
                   </p>
-                  {resultadoTeste.exemplos.length > 0 && (
-                    <ul className="text-xs text-muted-foreground space-y-0.5 pl-6 list-disc">
-                      {resultadoTeste.exemplos.map((ex, i) => <li key={i}>{ex}</li>)}
-                    </ul>
-                  )}
+                )}
+              </div>
+
+              {!opcoes ? (
+                <p className="text-sm text-muted-foreground">Carregue as opções acima para configurar o filtro.</p>
+              ) : (
+                <div className="space-y-3">
+                  <Selecao
+                    titulo="Exames" dica="Nome do procedimento no NetRis."
+                    opcoes={opcoes.exames}
+                    selecionados={t.filtroNetris.exames}
+                    onChange={v => setFiltro({ exames: v })}
+                  />
+                  <Selecao
+                    titulo="Modalidades" dica="Alternativa aos exames: entra se casar por qualquer um dos dois."
+                    opcoes={opcoes.modalidades}
+                    selecionados={t.filtroNetris.modalidades.map(String)}
+                    onChange={v => setFiltro({ modalidades: v.map(Number) })}
+                  />
+                  <Selecao
+                    titulo="Médicos" dica="Guardado pelo ID do NetRis — não quebra se o nome mudar."
+                    opcoes={opcoes.medicos}
+                    selecionados={t.filtroNetris.medicos}
+                    onChange={v => setFiltro({ medicos: v })}
+                  />
+                  <Selecao
+                    titulo="Salas"
+                    opcoes={opcoes.salas}
+                    selecionados={t.filtroNetris.salas}
+                    onChange={v => setFiltro({ salas: v })}
+                  />
+                  <Selecao
+                    titulo="Convênios"
+                    opcoes={opcoes.convenios}
+                    selecionados={t.filtroNetris.convenios}
+                    onChange={v => setFiltro({ convenios: v })}
+                  />
+                  <Selecao
+                    titulo="Situações a DESCARTAR" dica="Atendimentos nestas situações não entram no lote."
+                    opcoes={opcoes.situacoes}
+                    selecionados={t.filtroNetris.situacoes_excluir.map(String)}
+                    onChange={v => setFiltro({ situacoes_excluir: v.map(Number) })}
+                  />
                 </div>
               )}
-            </div>
+
+              {legado.length > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                    Este filtro ainda usa termos digitados (configuração antiga)
+                  </p>
+                  <p className="text-xs text-amber-800/80 dark:text-amber-300/80">
+                    {legado.join(" · ")} — continuam valendo. Depois de reconfigurar por seleção, limpe-os.
+                  </p>
+                  <Button
+                    variant="outline" size="sm"
+                    onClick={() => setFiltro({ termos_exame: [], termos_medico: [], termos_sala: [], termos_convenio: [] })}
+                  >
+                    Limpar termos antigos
+                  </Button>
+                </div>
+              )}
+
+              {semCriterio && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 px-3 py-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800 dark:text-amber-300">
+                    Sem nenhum critério, <strong>todos</strong> os atendimentos do período entram no lote.
+                  </p>
+                </div>
+              )}
+
+              <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="text-sm font-medium">Testar com os atendimentos de hoje</p>
+                  <Button variant="outline" size="sm" onClick={testarFiltro} disabled={testando} className="gap-1.5">
+                    {testando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                    Testar filtro
+                  </Button>
+                </div>
+                {resultadoTeste && (
+                  <div className="space-y-2">
+                    <p className="text-sm flex items-center gap-2">
+                      <CheckCircle2 className={cn("h-4 w-4", resultadoTeste.casaram > 0 ? "text-emerald-500" : "text-muted-foreground")} />
+                      <strong>{resultadoTeste.casaram}</strong> de {resultadoTeste.total} atendimentos de hoje casam.
+                    </p>
+                    {resultadoTeste.exemplos.length > 0 && (
+                      <ul className="text-xs text-muted-foreground space-y-0.5 pl-6 list-disc">
+                        {resultadoTeste.exemplos.map((ex, i) => <li key={i}>{ex}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -515,6 +618,11 @@ export default function TemplatesPage() {
                       {medico && (
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Stethoscope className="h-3 w-3" />{medico.nome}
+                        </span>
+                      )}
+                      {termosLegado(t.filtroNetris).length > 0 && (
+                        <span className="text-xs text-amber-600 flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" />filtro antigo, por texto
                         </span>
                       )}
                       {filtroVazio(t.filtroNetris) && (

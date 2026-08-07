@@ -10,6 +10,17 @@
 import type { Atendimento } from "@/services/netris/types";
 
 export interface FiltroNetris {
+  // ── Seleção (valores escolhidos a partir do que o NetRis devolve) ──────────
+  /** nomeProcedimento exatos. */
+  exames: string[];
+  /** idMedicoExecutor. Id é mais estável que o nome. */
+  medicos: string[];
+  /** nomeSala exatos. */
+  salas: string[];
+  /** nomeConvenio exatos. */
+  convenios: string[];
+
+  // ── Legado: termos digitados (mantidos para não quebrar o que já existe) ──
   /** Casa no nome do procedimento. Ex.: ["ANESTESIA"] */
   termos_exame: string[];
   /** idModalidade do NetRis. Ex.: [3] para Anestesia */
@@ -25,6 +36,10 @@ export interface FiltroNetris {
 }
 
 export const FILTRO_VAZIO: FiltroNetris = {
+  exames: [],
+  medicos: [],
+  salas: [],
+  convenios: [],
   termos_exame: [],
   modalidades: [],
   termos_medico: [],
@@ -41,6 +56,10 @@ export function normalizarFiltro(bruto: unknown): FiltroNetris {
     Array.isArray(v) ? v.map(Number).filter(n => Number.isFinite(n)) : [];
 
   return {
+    exames:            listaTexto(f.exames),
+    medicos:           listaTexto(f.medicos),
+    salas:             listaTexto(f.salas),
+    convenios:         listaTexto(f.convenios),
     termos_exame:      listaTexto(f.termos_exame),
     modalidades:       listaNum(f.modalidades),
     termos_medico:     listaTexto(f.termos_medico),
@@ -77,25 +96,48 @@ function algumTermoCasa(termos: string[], alvo: string): boolean {
   return termos.some(t => termoCasa(t, a));
 }
 
+/** Valor selecionado casa por igualdade (normalizada), não por pedaço. */
+function estaNaSelecao(selecionados: string[], valor: string | undefined): boolean {
+  if (selecionados.length === 0) return false;
+  const v = normalizar(valor ?? "");
+  return selecionados.some(s => normalizar(s) === v);
+}
+
 export function atendimentoCasa(a: Atendimento, filtro: FiltroNetris): boolean {
   if (filtro.situacoes_excluir.includes(a.situacaoId)) return false;
 
-  // Exame e modalidade são alternativas entre si: "é anestesia" tanto pelo nome
-  // do procedimento quanto pela modalidade do NetRis.
-  const temCriterioExame = filtro.termos_exame.length > 0 || filtro.modalidades.length > 0;
+  // Exame, modalidade e o legado de termos são alternativas entre si: basta um
+  // caminho reconhecer o atendimento.
+  const temCriterioExame =
+    filtro.exames.length > 0 || filtro.modalidades.length > 0 || filtro.termos_exame.length > 0;
   if (temCriterioExame) {
-    const porNome       = algumTermoCasa(filtro.termos_exame, a.exame ?? "");
+    const porSelecao    = estaNaSelecao(filtro.exames, a.exame);
     const porModalidade = a.modalidadeId != null && filtro.modalidades.includes(a.modalidadeId);
-    if (!porNome && !porModalidade) return false;
+    const porTermo      = algumTermoCasa(filtro.termos_exame, a.exame ?? "");
+    if (!porSelecao && !porModalidade && !porTermo) return false;
   }
 
-  // Médico, sala e convênio restringem o que passou acima. Lista vazia = sem
-  // restrição naquele campo.
-  if (filtro.termos_medico.length > 0 && !algumTermoCasa(filtro.termos_medico, a.medico ?? "")) return false;
-  if (filtro.termos_sala.length > 0 && !algumTermoCasa(filtro.termos_sala, a.sala ?? "")) return false;
-  if (filtro.termos_convenio.length > 0 && !algumTermoCasa(filtro.termos_convenio, a.convenio ?? "")) return false;
+  // Médico: id selecionado OU termo legado. Lista vazia = qualquer médico.
+  if (filtro.medicos.length > 0 || filtro.termos_medico.length > 0) {
+    const porId    = estaNaSelecao(filtro.medicos, a.medicoId);
+    const porTermo = algumTermoCasa(filtro.termos_medico, a.medico ?? "");
+    if (!porId && !porTermo) return false;
+  }
+
+  if (filtro.salas.length > 0 || filtro.termos_sala.length > 0) {
+    if (!estaNaSelecao(filtro.salas, a.sala) && !algumTermoCasa(filtro.termos_sala, a.sala ?? "")) return false;
+  }
+
+  if (filtro.convenios.length > 0 || filtro.termos_convenio.length > 0) {
+    if (!estaNaSelecao(filtro.convenios, a.convenio) && !algumTermoCasa(filtro.termos_convenio, a.convenio ?? "")) return false;
+  }
 
   return true;
+}
+
+/** Termos digitados que sobraram de antes da configuração por seleção. */
+export function termosLegado(f: FiltroNetris): string[] {
+  return [...f.termos_exame, ...f.termos_medico, ...f.termos_sala, ...f.termos_convenio];
 }
 
 // ── Setor derivado ───────────────────────────────────────────────────────────
@@ -128,21 +170,24 @@ export function aplicarFiltro(lista: Atendimento[], filtro: FiltroNetris): Atend
 
 /** Um filtro sem nenhum critério deixaria passar o dia inteiro — a interface avisa. */
 export function filtroVazio(f: FiltroNetris): boolean {
-  return f.termos_exame.length === 0
+  return f.exames.length === 0
+    && f.medicos.length === 0
+    && f.salas.length === 0
+    && f.convenios.length === 0
     && f.modalidades.length === 0
-    && f.termos_medico.length === 0
-    && f.termos_sala.length === 0
-    && f.termos_convenio.length === 0;
+    && termosLegado(f).length === 0;
 }
 
 /** Resumo legível do filtro, para a interface explicar o que vai buscar. */
 export function descreverFiltro(f: FiltroNetris): string {
   const partes: string[] = [];
-  if (f.termos_exame.length)    partes.push(`exame com ${f.termos_exame.join(" ou ")}`);
-  if (f.modalidades.length)     partes.push(`${f.modalidades.length} modalidade(s)`);
-  if (f.termos_medico.length)   partes.push(`médico ${f.termos_medico.join(" ou ")}`);
-  if (f.termos_sala.length)     partes.push(`sala ${f.termos_sala.join(" ou ")}`);
-  if (f.termos_convenio.length) partes.push(`convênio ${f.termos_convenio.join(" ou ")}`);
+  if (f.exames.length)      partes.push(`${f.exames.length} exame(s)`);
+  if (f.modalidades.length) partes.push(`${f.modalidades.length} modalidade(s)`);
+  if (f.medicos.length)     partes.push(`${f.medicos.length} médico(s)`);
+  if (f.salas.length)       partes.push(`${f.salas.length} sala(s)`);
+  if (f.convenios.length)   partes.push(`${f.convenios.length} convênio(s)`);
+  const legado = termosLegado(f);
+  if (legado.length)        partes.push(`${legado.length} termo(s) digitado(s) antigos`);
   if (partes.length === 0) return "Sem filtro configurado — traz todos os atendimentos do período.";
   return `Traz: ${partes.join(" · ")}.`;
 }
