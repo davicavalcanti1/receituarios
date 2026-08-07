@@ -106,6 +106,31 @@ A integração deixou de ser obrigatória: **o núcleo do produto funciona só c
 
 Testado nos dois modos: desligado → `{"netris":false}` e 503 na rota; ligado → `{"netris":true}` e 401 (auth ainda guardando), não 503.
 
+## Templates no banco + auditoria do PDF (Fase 6 — 07/ago/2026)
+
+Migration `20260807140000_templates_e_documentos.sql`.
+
+### Templates (`receituarios.templates`)
+
+`gerarPdf.ts` tinha nome, cargo e CRM do **Dr. Félix** e do **Dr. Igor**, mais a lista de medicações, fixos no código — dados de um cliente dentro do produto, o que obrigaria outra clínica a forkar. Agora vêm do banco, com seed reproduzindo **exatamente** os valores antigos (conferidos campo a campo), então o PDF sai idêntico.
+
+A lista de tipos no "Novo lote" e o "quais tipos geram PDF" também passaram a vir da tabela.
+
+De quebra, some um hack: no PDF assinado, o código desenhava o bloco do médico fixo e depois **pintava um retângulo branco por cima** para escrever o médico real. Com o template vindo do banco, o bloco simplesmente não é impresso quando há assinatura digital.
+
+> Ainda **não há tela de edição** de templates — cadastrar/alterar é por SQL. É o próximo passo natural desta fase.
+
+### Auditoria (`receituarios.documentos`)
+
+Era a lacuna mais séria do módulo. O PDF assinado ia para o storage, o caminho era gravado no item, mas **nada registrava o arquivo** — e a falha de upload era engolida com um `console.warn` enquanto o lote virava `completed`. Dava para ter lote marcado como assinado **sem nenhum documento guardado**. Em receituário de controle especial, isso é grave.
+
+Agora, ao assinar:
+1. o PDF é enviado ao storage — **se falhar, o lote NÃO é marcado como assinado** e o erro aparece pro médico;
+2. grava-se um registro em `documentos` com `hash_sha256`, tamanho, nome e autor — se esse insert falhar, também aborta;
+3. a tela do admin baixa **o arquivo guardado** (a prova do ato), não uma regeração, e mostra data e hash.
+
+`documentos` não aceita UPDATE de ninguém — registro de auditoria não se edita. Lotes assinados antes desta fase não têm documento; para eles o download cai na regeração, avisando na mensagem.
+
 ---
 
 ## Fase 4 (concluída 07/ago/2026)

@@ -25,16 +25,14 @@ import {
 } from "@/features/receituarios/lib/parseLote";
 import { buscarAtendimentos } from "@/services/netris/atendimentos";
 import { hojeISO, SITUACAO } from "@/services/netris/client";
-import { gerarPdfLote } from "@/features/receituarios/lib/gerarPdf";
+import { gerarPdfLote, listarTemplates } from "@/features/receituarios/lib/gerarPdf";
+import { useQuery } from "@tanstack/react-query";
 import { receituariosService } from "@/features/receituarios/services/receituariosService";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import { useConfig } from "@/lib/config";
 
-const TIPOS = [
-  { id: "anestesia_dr_felix", label: "Anestesia Dr. Felix", desc: "Receituário de anestesia em lote" },
-  { id: "longactil",          label: "Longactil",            desc: "Receituário de Longactil em lote" },
-] as const;
-type TipoReceita = (typeof TIPOS)[number]["id"];
+// Fase 6: os tipos vêm de receituarios.templates, não mais de uma lista fixa.
+type TipoReceita = string;
 
 const COL_LABELS: Record<CampoLote, string> = {
   data_exame: "Data", horario: "Horário", paciente: "Paciente", procedimento: "Procedimento",
@@ -79,6 +77,12 @@ export default function NovoLoteReceituario() {
   const [tipo, setTipo] = useState<TipoReceita | null>(null);
   const [texto, setTexto] = useState("");
   const [resultado, setResultado] = useState<ResultadoParse | null>(null);
+
+  const { data: templates = [] } = useQuery({
+    queryKey: ["templates"],
+    queryFn: listarTemplates,
+    staleTime: 5 * 60_000,
+  });
 
   // Seletor de médico
   const [medicos, setMedicos] = useState<Medico[]>([]);
@@ -202,17 +206,22 @@ export default function NovoLoteReceituario() {
             <CardTitle className="text-base">1. Tipo de receita</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
-            {TIPOS.map(t => (
+            {templates.length === 0 ? (
+              <p className="text-sm text-muted-foreground sm:col-span-2">
+                Nenhum template cadastrado. Um administrador precisa cadastrar ao menos um em
+                <code className="mx-1 text-xs">receituarios.templates</code>.
+              </p>
+            ) : templates.map(t => (
               <button
-                key={t.id}
-                onClick={() => setTipo(t.id)}
+                key={t.codigo}
+                onClick={() => setTipo(t.codigo)}
                 className={cn(
                   "rounded-lg border px-4 py-3 text-left transition-colors",
-                  tipo === t.id ? "border-sky-500 bg-sky-50 ring-1 ring-sky-500" : "hover:bg-muted/50",
+                  tipo === t.codigo ? "border-sky-500 bg-sky-50 ring-1 ring-sky-500" : "hover:bg-muted/50",
                 )}
               >
-                <p className="font-medium">{t.label}</p>
-                <p className="text-sm text-muted-foreground">{t.desc}</p>
+                <p className="font-medium">{t.nome}</p>
+                <p className="text-sm text-muted-foreground">{t.descricao}</p>
               </button>
             ))}
           </CardContent>
@@ -443,7 +452,7 @@ export default function NovoLoteReceituario() {
                     setGerando(true);
                     try {
                       // Salva o lote pra permitir rebaixar o PDF depois
-                      const tipoLabel = TIPOS.find(t => t.id === tipo)?.label ?? tipo;
+                      const tipoLabel = templates.find(t => t.codigo === tipo)?.nome ?? tipo;
                       await receituariosService.criarLote({
                         userId:   user?.id,
                         tipo,

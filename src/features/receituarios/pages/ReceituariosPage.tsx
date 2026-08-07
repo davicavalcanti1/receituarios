@@ -16,7 +16,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { receituariosService } from "@/features/receituarios/services/receituariosService";
-import { gerarPdfLote, gerarPdfLoteAssinado, type TipoReceita } from "@/features/receituarios/lib/gerarPdf";
+import { gerarPdfLote, gerarPdfLoteAssinado, listarTemplates, type TipoReceita } from "@/features/receituarios/lib/gerarPdf";
 import type { StatusLote } from "@/features/receituarios/types";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -137,7 +137,30 @@ function LoteDetalhe({ loteId, tipoLote, tituloLote, statusLote, onClose }: {
   });
 
   const tipo = tipoLote as TipoReceita;
-  const podePdf = tipo === "anestesia_dr_felix" || tipo === "longactil";
+
+  // Quais tipos geram PDF passou a ser dado do banco (Fase 6), não uma lista
+  // fixa no código.
+  const { data: templates = [] } = useQuery({
+    queryKey: ["templates"],
+    queryFn: listarTemplates,
+    staleTime: 5 * 60_000,
+  });
+  const podePdf = templates.some(t => t.codigo === tipo);
+
+  // Documento assinado guardado no storage — é o arquivo que o médico realmente
+  // assinou, e não uma regeração. Só existe para lotes assinados a partir da
+  // Fase 6; nos antigos o download cai na regeração.
+  const { data: documento } = useQuery({
+    queryKey: ["documento-assinado", loteId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("documentos")
+        .select("storage_bucket, storage_path, nome_arquivo, hash_sha256, created_at")
+        .eq("lote_id", loteId).eq("tipo", "assinado")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      return data ?? null;
+    },
+  });
 
   async function baixarOriginal() {
     if (!podePdf) { toast.error("Tipo sem PDF automático"); return; }
@@ -152,26 +175,39 @@ function LoteDetalhe({ loteId, tipoLote, tituloLote, statusLote, onClose }: {
     } finally { setBaixando(null); }
   }
 
+  function baixarBlob(blob: Blob, nome: string) {
+    const url = URL.createObjectURL(blob);
+    Object.assign(document.createElement("a"), { href: url, download: nome }).click();
+    URL.revokeObjectURL(url);
+  }
+
   async function baixarAssinado() {
-    if (!podePdf) { toast.error("Tipo sem PDF automático"); return; }
-    const sig = medicoDoLote?.assinatura_png;
-    if (!sig) { toast.error("Médico ainda não assinou — assinatura não encontrada"); return; }
     setBaixando("assinado");
     try {
+      // Caminho preferido: o arquivo guardado, que é a prova do ato.
+      if (documento) {
+        const { data, error } = await supabase.storage
+          .from(documento.storage_bucket).download(documento.storage_path);
+        if (error) throw error;
+        baixarBlob(data, documento.nome_arquivo ?? `${tituloLote}_assinado.pdf`);
+        toast.success("PDF assinado baixado", { description: "Arquivo original guardado na assinatura." });
+        return;
+      }
+
+      // Fallback para lotes assinados antes da Fase 6, que não têm documento
+      // guardado: regera a partir do payload e da assinatura do médico.
+      if (!podePdf) { toast.error("Tipo sem PDF automático"); return; }
+      const sig = medicoDoLote?.assinatura_png;
+      if (!sig) { toast.error("Sem arquivo guardado e sem assinatura do médico para regerar"); return; }
       const { linhas } = await receituariosService.getLinhasDoLote(loteId);
       if (!linhas.length) { toast.error("Lote sem itens"); return; }
-      const medico = {
+      const { blob } = await gerarPdfLoteAssinado(tipo, linhas, sig, {
         nome:          medicoDoLote?.nome ?? "",
         crm:           medicoDoLote?.crm ?? "",
         especialidade: medicoDoLote?.especialidade ?? "",
-      };
-      const { blob } = await gerarPdfLoteAssinado(tipo, linhas, sig, medico);
-      const url = URL.createObjectURL(blob);
-      Object.assign(document.createElement("a"), {
-        href: url, download: `${tituloLote}_assinado.pdf`,
-      }).click();
-      URL.revokeObjectURL(url);
-      toast.success("PDF assinado baixado");
+      });
+      baixarBlob(blob, `${tituloLote}_assinado.pdf`);
+      toast.success("PDF assinado baixado", { description: "Regerado — este lote é anterior ao arquivamento." });
     } catch (e: any) {
       toast.error("Erro", { description: e?.message });
     } finally { setBaixando(null); }
@@ -244,6 +280,23 @@ function LoteDetalhe({ loteId, tipoLote, tituloLote, statusLote, onClose }: {
               {baixando === "assinado" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
               Baixar PDF assinado
             </Button>
+          )}
+        </div>
+      )}
+
+      {/* Trilha de auditoria do documento assinado */}
+      {assinado && documento && (
+        <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-1">
+          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <FileText className="h-3.5 w-3.5 text-primary" /> Documento arquivado
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Guardado em {format(new Date(documento.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+          </p>
+          {documento.hash_sha256 && (
+            <p className="text-[10px] text-muted-foreground/80 font-mono break-all">
+              SHA-256: {documento.hash_sha256}
+            </p>
           )}
         </div>
       )}

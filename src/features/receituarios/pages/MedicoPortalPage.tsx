@@ -44,6 +44,14 @@ const JOB_LABELS: Record<string, string> = {
   procedimentos_dia: "Procedimentos", custom: "Receituário",
 };
 
+/** SHA-256 do arquivo, em hex — a impressão digital guardada em `documentos`. */
+async function sha256Hex(blob: Blob): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 // ── Canvas ────────────────────────────────────────────────────────────────────
 function AssinaturaCanvas({ existing, onSave, onClear, saved }: {
   existing?: string | null; onSave: (png: string) => void;
@@ -150,9 +158,39 @@ function LoteDetalhe({ lote, medico, onBack, onSigned }: {
       );
       // Bucket próprio, path <lote_id>/… — o tenant deixou de existir.
       const fileName = `${lote.id}/assinado_${Date.now()}.pdf`;
+
+      // Fase 6: o arquivo assinado é a PROVA do ato. Antes o erro de upload era
+      // engolido com console.warn e o lote virava "completed" mesmo assim —
+      // ficava marcado como assinado sem nenhum documento guardado. Agora falha.
       const { error: uploadError } = await supabase.storage
-        .from("receituarios").upload(fileName, blob, { upsert: true });
-      if (uploadError) console.warn("[MedicoPortal] upload:", uploadError.message);
+        .from("receituarios").upload(fileName, blob, { upsert: true, contentType: "application/pdf" });
+      if (uploadError) {
+        throw new Error(
+          `Não foi possível guardar o PDF assinado (${uploadError.message}). ` +
+          `O lote NÃO foi marcado como assinado — tente de novo.`,
+        );
+      }
+
+      // Registro de auditoria com hash: permite provar depois que o arquivo
+      // guardado é exatamente o que foi assinado.
+      const hash = await sha256Hex(blob);
+      const { error: docError } = await supabase.from("documentos").insert({
+        lote_id:        lote.id,
+        tipo:           "assinado",
+        storage_bucket: "receituarios",
+        storage_path:   fileName,
+        nome_arquivo:   `receituario_${lote.titulo}.pdf`,
+        tamanho_bytes:  blob.size,
+        hash_sha256:    hash,
+        total_receitas: receitas,
+        gerado_por:     user?.id ?? null,
+      });
+      if (docError) {
+        throw new Error(
+          `PDF enviado, mas o registro de auditoria falhou (${docError.message}). ` +
+          `O lote NÃO foi marcado como assinado.`,
+        );
+      }
 
       const { error: loteUpdateError } = await supabase.from("lotes").update({
         status: "completed", concluido_em: new Date().toISOString(),

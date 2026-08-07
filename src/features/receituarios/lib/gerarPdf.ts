@@ -7,36 +7,74 @@ import jsPDF from "jspdf";
 import imagoLogo from "@/assets/imago-logo.png";
 import type { LinhaLote } from "./parseLote";
 import { hojeBRT } from "@/lib/dataBRT";
+import { supabase } from "@/integrations/supabase/client";
 
-export type TipoReceita = "anestesia_dr_felix" | "longactil";
+/** Código do template (receituarios.templates.codigo). */
+export type TipoReceita = string;
 
 interface Assinatura { nome: string; cargo: string; crm: string; }
-interface Template {
-  setorFixo?: string;       // Longactil: setor é texto fixo
-  derivarSetor?: boolean;   // Anestesia: deriva do exame/sala
-  itens: string[];          // medicações com checkbox; "" = linha em branco pra preencher
-  comOutro?: boolean;       // acrescenta a linha "OUTRO:____"
-  assinatura?: Assinatura;  // nome impresso sob a linha (Longactil não tem)
-  mostrarMedico?: boolean;  // imprime campo MÉDICO: (Longactil precisa, Anestesia usa assinatura fixa)
+
+/**
+ * Fase 6: o template vem do banco (receituarios.templates), não mais de uma
+ * constante. Antes, nome/cargo/CRM do Dr. Félix e do Dr. Igor e a lista de
+ * medicações estavam fixos aqui — dados de UM cliente dentro do produto, o que
+ * obrigaria outra clínica a forkar o código.
+ */
+export interface Template {
+  codigo: string;
+  nome: string;
+  descricao?: string | null;
+  titulo: string;
+  setorFixo?: string | null;      // Longactil: setor é texto fixo
+  derivarSetor?: boolean;         // Anestesia: deriva do exame/sala
+  itens: string[];                // medicações com checkbox; "" = linha em branco
+  comOutro?: boolean;             // acrescenta a linha "OUTRO:____"
+  assinatura?: Assinatura | null; // bloco impresso sob a linha, no PDF sem assinatura digital
+  mostrarMedico?: boolean;        // imprime o campo "MÉDICO:"
 }
 
-const TITULO = "RECEITUÁRIO INTERNO DE CONTROLE ESPECIAL";
+function daLinhaDoBanco(row: any): Template {
+  return {
+    codigo:        row.codigo,
+    nome:          row.nome,
+    descricao:     row.descricao,
+    titulo:        row.titulo,
+    setorFixo:     row.setor_fixo,
+    derivarSetor:  row.derivar_setor,
+    itens:         Array.isArray(row.itens) ? row.itens : [],
+    comOutro:      row.com_outro,
+    mostrarMedico: row.mostrar_medico,
+    assinatura:    row.assinatura ?? null,
+  };
+}
 
-const TEMPLATES: Record<TipoReceita, Template> = {
-  anestesia_dr_felix: {
-    derivarSetor: true,
-    itens: ["FENTANIL", "FLUMAZENIL", "MIDAZOLAM", "PROPOFOL", "SEVOFLURANO"],
-    comOutro: true,
-    assinatura: { nome: "FÉLIX SOARES NÓBREGA", cargo: "ANESTESIOLOGISTA", crm: "CRM-PB: 7608" },
-  },
-  longactil: {
-    setorFixo: "ELETROENCEFALOGRAMA EM VIGILIA, E SONO ESPONTANEO OU INDUZIDO",
-    itens: ["LONGACTIL", "", "", "", ""],
-    comOutro: false,
-    mostrarMedico: true,
-    assinatura: { nome: "IGOR SILVEIRA DE CASTRO GONDIM", cargo: "NEUROLOGISTA", crm: "CRM-PB: 7850" },
-  },
-};
+const cacheTemplates = new Map<string, Template>();
+
+export async function listarTemplates(): Promise<Template[]> {
+  const { data, error } = await supabase
+    .from("templates")
+    .select("*")
+    .eq("ativo", true)
+    .order("ordem");
+  if (error) throw error;
+  const templates = (data ?? []).map(daLinhaDoBanco);
+  for (const t of templates) cacheTemplates.set(t.codigo, t);
+  return templates;
+}
+
+export async function carregarTemplate(codigo: string): Promise<Template> {
+  const emCache = cacheTemplates.get(codigo);
+  if (emCache) return emCache;
+
+  const { data, error } = await supabase
+    .from("templates").select("*").eq("codigo", codigo).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error(`Template "${codigo}" não encontrado`);
+
+  const tpl = daLinhaDoBanco(data);
+  cacheTemplates.set(codigo, tpl);
+  return tpl;
+}
 
 function derivarSetor(linha: LinhaLote): string {
   if (linha.setor) return linha.setor;
@@ -86,7 +124,7 @@ function desenharReceita(
   // Título
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.text(TITULO, cx, y, { align: "center" });
+  doc.text(tpl.titulo, cx, y, { align: "center" });
   y += 9;
 
   // NOME / DATA / SETOR (label bold + valor, com wrap pro setor longo)
@@ -140,8 +178,7 @@ export async function gerarPdfLote(
   const validas = linhas.filter(l => l.erros.length === 0);
   if (validas.length === 0) return { receitas: 0, paginas: 0 };
 
-  const tpl = TEMPLATES[tipo];
-  const logo = await carregarLogo();
+  const [tpl, logo] = await Promise.all([carregarTemplate(tipo), carregarLogo()]);
 
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" }); // 297 x 210
   const W = doc.internal.pageSize.getWidth();
@@ -173,8 +210,11 @@ export async function gerarPdfLoteAssinado(
   const validas = linhas.filter((l: LinhaLote) => !l.erros || l.erros.length === 0);
   if (validas.length === 0) throw new Error("Nenhuma receita válida no lote");
 
-  const tpl = TEMPLATES[tipo];
-  const logo = await carregarLogo();
+  const [tplBase, logo] = await Promise.all([carregarTemplate(tipo), carregarLogo()]);
+  // Quem assina é o médico atribuído, então o bloco fixo do template não é
+  // impresso. Antes ele era desenhado e depois coberto por um retângulo branco
+  // — hack que só existia porque o médico era hardcoded no template.
+  const tpl: Template = { ...tplBase, assinatura: null };
 
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const W   = doc.internal.pageSize.getWidth();
@@ -208,11 +248,6 @@ export async function gerarPdfLoteAssinado(
     const sigYTop = assY - sigH - 1; // 1mm acima da linha
 
     doc.addImage(signaturePng, "PNG", sigX, sigYTop, sigW, sigH);
-
-    // Apaga o nome fixo do template (ex: Dr. Félix) com retângulo branco
-    // antes de escrever o nome do médico atribuído
-    doc.setFillColor(255, 255, 255);
-    doc.rect(x0 + 2, assY + 0.5, colW - 4, 22, "F");
 
     // Nome completo, especialidade e CRM — todos em maiúsculo
     doc.setTextColor(0, 0, 0);
