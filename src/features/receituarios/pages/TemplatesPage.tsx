@@ -136,7 +136,6 @@ function Selecao({ titulo, dica, opcoes, selecionados, onChange }: {
             className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted/50 hover:border-primary/40 transition-colors"
           >
             {o.rotulo}
-            <span className="ml-1 opacity-50">{o.ocorrencias}</span>
           </button>
         ))}
       </div>
@@ -170,19 +169,6 @@ function Editor({ inicial, medicos, onVoltar }: {
   const setFiltro = (patch: Partial<FiltroNetris>) =>
     setT(prev => ({ ...prev, filtroNetris: { ...prev.filtroNetris, ...patch } }));
 
-  // Contagem ao vivo sobre os atendimentos já carregados: o número muda
-  // conforme se marca e desmarca, então não precisa de botão "testar".
-  const { casamAgora, exemplosAgora } = useMemo(() => {
-    if (!opcoes) return { casamAgora: 0, exemplosAgora: [] as string[] };
-    const casaram = aplicarFiltro(opcoes.atendimentos, t.filtroNetris);
-    return {
-      casamAgora: casaram.length,
-      exemplosAgora: casaram.slice(0, 3).map(
-        a => `${a.nomePaciente} — ${a.exame ?? "?"}${a.medico ? ` (${a.medico})` : ""}`,
-      ),
-    };
-  }, [opcoes, t.filtroNetris]);
-
   async function salvar() {
     if (!t.nome.trim())   { toast.error("Dê um nome ao receituário"); return; }
     if (!t.codigo.trim()) { toast.error("O código é obrigatório"); return; }
@@ -202,7 +188,7 @@ function Editor({ inicial, medicos, onVoltar }: {
   const carregarOpcoes = useCallback(async () => {
     setCarregandoOpcoes(true);
     try {
-      setOpcoes(await carregarOpcoesNetris(30));
+      setOpcoes(await carregarOpcoesNetris());
     } catch (e: any) {
       toast.error("Erro ao carregar as opções do NetRis", { description: e?.message });
     } finally { setCarregandoOpcoes(false); }
@@ -423,19 +409,6 @@ function Editor({ inicial, medicos, onVoltar }: {
                 onChange={v => setFiltro({ medicos: v, termos_medico: [] })}
               />
 
-              {/* Contagem ao vivo sobre os dados já carregados — sem botão de
-                  testar: o número muda conforme se marca e desmarca. */}
-              <div className="rounded-lg border border-border bg-muted/20 px-4 py-3">
-                <p className="text-sm">
-                  <strong>{casamAgora}</strong> de {opcoes.totalAtendimentos} atendimentos dos
-                  últimos 30 dias entram neste receituário.
-                </p>
-                {exemplosAgora.length > 0 && (
-                  <ul className="text-xs text-muted-foreground space-y-0.5 mt-1.5 pl-4 list-disc">
-                    {exemplosAgora.map((ex, i) => <li key={i}>{ex}</li>)}
-                  </ul>
-                )}
-              </div>
             </>
           )}
         </CardContent>

@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import medicoCadastroRoutes from "./routes/medico-cadastro.js";
 import netrisRoutes from "./routes/netris.js";
+import netrisCatalogoRoutes from "./routes/netris-catalogo.js";
 import configRoutes from "./routes/config.js";
 import { netrisConfigurado } from "./lib/netris.js";
 
@@ -14,6 +15,7 @@ app.use(express.json({ limit: "2mb" }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/config", configRoutes);
 app.use("/api/public/medico", medicoCadastroRoutes);
+app.use("/api/netris/catalogo", netrisCatalogoRoutes);
 app.use("/api/netris", netrisRoutes);
 
 // Em produção (container único) o Express também serve o build do Vite.

@@ -13,7 +13,12 @@ export interface FiltroNetris {
   // ── Seleção (valores escolhidos a partir do que o NetRis devolve) ──────────
   /** nomeProcedimento exatos. */
   exames: string[];
-  /** idMedicoExecutor. Id é mais estável que o nome. */
+  /**
+   * NOME do médico executor, exato. Não é id: confirmado na API real que o
+   * `idMedicoExecutor` do atendimento não corresponde a `id_medico` nem a
+   * `id_profissional` do catálogo — o executor tem espaço de id próprio, e o
+   * nome é o único identificador confiável entre os dois lados.
+   */
   medicos: string[];
   /** nomeSala exatos. */
   salas: string[];
@@ -128,7 +133,7 @@ export function atendimentoCasa(a: Atendimento, filtro: FiltroNetris): boolean {
 
   // Médico: id selecionado OU termo legado. Lista vazia = qualquer médico.
   if (filtro.medicos.length > 0 || filtro.termos_medico.length > 0) {
-    const porId    = estaNaSelecao(filtro.medicos, a.medicoId);
+    const porId    = estaNaSelecao(filtro.medicos, a.medico);
     const porTermo = algumTermoCasa(filtro.termos_medico, a.medico ?? "");
     if (!porId && !porTermo) return false;
   }
