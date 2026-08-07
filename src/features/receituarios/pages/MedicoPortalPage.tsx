@@ -119,7 +119,7 @@ function LoteDetalhe({ lote, medico, onBack, onSigned }: {
   onBack: () => void; onSigned: () => void;
 }) {
   const qc = useQueryClient();
-  const { user, recarregar } = useAuth();
+  const { user, tenantId, recarregar } = useAuth();
   const [signaturePng, setSignaturePng] = useState<string | null>(medico?.assinatura_png ?? null);
   const [signing, setSigning] = useState(false);
 
@@ -175,6 +175,7 @@ function LoteDetalhe({ lote, medico, onBack, onSigned }: {
       // guardado é exatamente o que foi assinado.
       const hash = await sha256Hex(blob);
       const { error: docError } = await supabase.from("documentos").insert({
+        tenant_id:      tenantId,
         lote_id:        lote.id,
         tipo:           "assinado",
         storage_bucket: "receituarios",

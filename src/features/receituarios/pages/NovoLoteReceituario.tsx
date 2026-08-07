@@ -67,7 +67,7 @@ interface Medico { id: string; nome: string; crm: string | null; especialidade: 
 
 export default function NovoLoteReceituario() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, tenantId } = useAuth();
   const { config } = useConfig();
   const netrisLigado = config.integracoes.netris;
   const qc = useQueryClient();
@@ -453,7 +453,9 @@ export default function NovoLoteReceituario() {
                     try {
                       // Salva o lote pra permitir rebaixar o PDF depois
                       const tipoLabel = templates.find(t => t.codigo === tipo)?.nome ?? tipo;
+                      if (!tenantId) throw new Error("Sem tenant no perfil — refaça o login.");
                       await receituariosService.criarLote({
+                        tenantId,
                         userId:   user?.id,
                         tipo,
                         titulo:   `${tipoLabel} — ${new Date().toLocaleDateString("pt-BR")}`,

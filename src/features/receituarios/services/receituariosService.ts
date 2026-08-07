@@ -10,15 +10,16 @@ export const receituariosService = {
   // Salva o lote (lote + itens). A LinhaLote completa fica em `payload` pra
   // permitir regenerar o mesmo PDF depois sem armazenar o arquivo.
   async criarLote(params: {
-    userId?: string | null; tipo: string; titulo: string;
+    tenantId: string; userId?: string | null; tipo: string; titulo: string;
     linhas: LinhaLote[]; medicoId?: string;
   }): Promise<{ id: string }> {
-    const { userId, tipo, titulo, linhas, medicoId } = params;
+    const { tenantId, userId, tipo, titulo, linhas, medicoId } = params;
     const validas = linhas.filter(l => l.erros.length === 0);
 
     const { data: lote, error: loteErr } = await supabase
       .from("lotes")
       .insert({
+        tenant_id:  tenantId,
         titulo,
         tipo,
         status:     medicoId ? "signature_pending" : "imported",
@@ -33,6 +34,7 @@ export const receituariosService = {
     if (loteErr) throw loteErr;
 
     const itens = validas.map((l, idx) => ({
+      tenant_id:     tenantId,
       lote_id:       lote.id,
       sequencia:     idx + 1,
       status:        "draft",

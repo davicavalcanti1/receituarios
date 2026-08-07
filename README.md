@@ -106,6 +106,24 @@ A integração deixou de ser obrigatória: **o núcleo do produto funciona só c
 
 Testado nos dois modos: desligado → `{"netris":false}` e 503 na rota; ligado → `{"netris":true}` e 401 (auth ainda guardando), não 503.
 
+## Multi-tenant próprio (Fase 7 — 07/ago/2026)
+
+Migration `20260807150000_multi_tenant.sql`. Reverte, de propósito, o "single-tenant por ora" das fases anteriores — o objetivo passou a ser **vender o módulo para outras clínicas**, e o custo previsto lá (uma migration com backfill) se paga aqui.
+
+O ponto: multi-tenant **próprio**, dentro do schema `receituarios`. Não reusa `public.tenants` nem `get_user_tenant_id()` — a independência das fases 1–3 fica de pé, senão o produto não seria vendável isolado.
+
+- `receituarios.tenants`, com o tenant da Imago reusando o **mesmo uuid** de `public.tenants` (sem FK — só facilita conferir os dois lados enquanto coexistirem).
+- `tenant_id NOT NULL` em `usuarios`, `medicos`, `lotes`, `lote_itens`, `convites`, `templates` e `documentos`, com backfill em três passos (adiciona nullable → preenche → trava).
+- **Todas** as policies foram recriadas por inteiro com o recorte por tenant. Recriadas, não emendadas: policies são permissivas e se somam por `OR`, então uma sobra antiga sem o filtro deixaria o isolamento furado.
+- `templates.codigo` passou a ser único **por tenant** — cada clínica tem o seu "anestesia", com as próprias medicações e bloco de assinatura. `convites.token` segue único globalmente: é segredo sorteado, validado antes de existir sessão.
+- **Furo de storage fechado:** as policies da Fase 1 liberavam o bucket para `eh_staff()` sem olhar tenant. Como o caminho é `<lote_id>/…`, um staff da clínica B que descobrisse o uuid de um lote da clínica A baixaria o PDF assinado dela. Agora todo acesso passa por `pode_acessar_arquivo()`, que exige lote do próprio tenant.
+
+**Modelo:** um usuário pertence a **um** tenant (a chave de `usuarios`/`medicos` é o id do `auth.users`). Atender a mesma pessoa em duas clínicas exigiria uma tabela de vínculo N:N — não é o caso hoje.
+
+**Como entra cliente novo:** por `provisionar_tenant(nome, slug)`, que exige **service_role** e devolve o tenant mais um convite de admin válido por 30 dias. O `bootstrap_admin()` continua restrito à primeira instalação — com multi-tenant seria tentador deixar qualquer um criar o próprio tenant, mas o `auth.users` é compartilhado com a Imago, e isso deixaria qualquer funcionário de lá abrir uma clínica no produto.
+
+---
+
 ## Templates no banco + auditoria do PDF (Fase 6 — 07/ago/2026)
 
 Migration `20260807140000_templates_e_documentos.sql`.

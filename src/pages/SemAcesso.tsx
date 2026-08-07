@@ -13,6 +13,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2, ShieldQuestion, KeyRound, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import imagoLogo from "@/assets/imago-logo.png";
@@ -20,12 +21,14 @@ import imagoLogo from "@/assets/imago-logo.png";
 export default function SemAcesso() {
   const { user, signOut, recarregar } = useAuth();
   const [carregando, setCarregando] = useState(false);
+  const [nomeClinica, setNomeClinica] = useState("");
 
   async function assumirAdmin() {
     setCarregando(true);
     try {
       const { error } = await supabase.rpc("bootstrap_admin", {
         p_nome: user?.user_metadata?.full_name ?? null,
+        p_tenant_nome: nomeClinica || null,
       });
       if (error) throw error;
       toast.success("Pronto — você agora é o administrador do módulo.");
@@ -56,13 +59,20 @@ export default function SemAcesso() {
         </div>
 
         <div className="space-y-2 pt-2">
+          <Input
+            value={nomeClinica}
+            onChange={e => setNomeClinica(e.target.value)}
+            placeholder="Nome da clínica"
+            className="text-center"
+          />
           <Button onClick={assumirAdmin} disabled={carregando} className="w-full gap-2">
             {carregando ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
             Sou o primeiro administrador
           </Button>
           <p className="text-[11px] text-muted-foreground">
-            Só funciona na primeira configuração, enquanto não houver nenhum
-            usuário cadastrado no módulo.
+            Cria a clínica e o primeiro administrador. Só funciona na primeira
+            configuração, enquanto não houver nenhum usuário no módulo — clientes
+            novos são abertos pelo backend, com <code>provisionar_tenant</code>.
           </p>
         </div>
 

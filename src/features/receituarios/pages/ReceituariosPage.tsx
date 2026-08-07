@@ -24,13 +24,13 @@ import { supabase } from "@/integrations/supabase/client";
 // ── Convite médico ────────────────────────────────────────────────────────────
 function InviteButton() {
   const [loading, setLoading] = useState(false);
-  const { user } = useAuth();
+  const { user, tenantId } = useAuth();
   async function gerarConvite() {
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from("convites")
-        .insert({ tipo: "medico", criado_por: user?.id ?? null })
+        .insert({ tenant_id: tenantId, tipo: "medico", criado_por: user?.id ?? null })
         .select("token").single();
       if (error) throw error;
       const link = `${window.location.origin}/cadastro/medico?token=${data.token}`;

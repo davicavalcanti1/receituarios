@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export interface Usuario {
   id: string;
+  tenant_id: string;
   nome: string;
   email: string | null;
   papel: "admin" | "operador";
@@ -19,6 +20,7 @@ export interface Usuario {
 
 export interface Medico {
   id: string;
+  tenant_id: string;
   nome: string;
   email: string | null;
   crm: string;
@@ -35,6 +37,11 @@ interface AuthContextValue {
   usuario: Usuario | null;
   medico: Medico | null;
   papel: Papel | null;
+  /**
+   * Tenant do usuário logado (Fase 7). A RLS já recorta tudo por tenant, mas os
+   * INSERTs precisam informá-lo: tenant_id é NOT NULL e a policy tem WITH CHECK.
+   */
+  tenantId: string | null;
   loading: boolean;
   signOut: () => Promise<void>;
   /** Relê usuário/médico — usado após o bootstrap e após salvar a assinatura. */
@@ -96,9 +103,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     : medico?.ativo ? "medico"
     : null;
 
+  const tenantId =
+    usuario?.ativo ? usuario.tenant_id
+    : medico?.ativo ? medico.tenant_id
+    : null;
+
   return (
     <AuthContext.Provider
-      value={{ user, session, usuario, medico, papel, loading, signOut, recarregar }}
+      value={{ user, session, usuario, medico, papel, tenantId, loading, signOut, recarregar }}
     >
       {children}
     </AuthContext.Provider>

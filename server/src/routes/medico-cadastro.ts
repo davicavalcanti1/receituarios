@@ -45,9 +45,10 @@ router.post("/cadastro", limiter, async (req, res) => {
   const { token, fullName, email, password, crm, especialidade, signaturePng } = parsed.data;
 
   // 1. Valida o convite
+  // O convite carrega o tenant: é ele que diz em qual clínica o médico entra.
   const { data: convite, error: conviteErr } = await rx
     .from("convites")
-    .select("id, tipo, usado_em, expira_em")
+    .select("id, tenant_id, tipo, usado_em, expira_em")
     .eq("token", token)
     .maybeSingle();
 
@@ -89,6 +90,7 @@ router.post("/cadastro", limiter, async (req, res) => {
       .from("medicos")
       .upsert({
         id:                       userId,
+        tenant_id:                convite.tenant_id,
         nome:                     fullName,
         email,
         crm,

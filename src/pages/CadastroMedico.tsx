@@ -137,6 +137,7 @@ export default function CadastroMedico() {
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(true);
   const [tokenValid, setTokenValid] = useState(false);
+  const [clinica, setClinica] = useState<string | null>(null);
   const [signaturePng, setSignaturePng] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
@@ -151,7 +152,10 @@ export default function CadastroMedico() {
     (async () => {
       const { data, error } = await supabase.rpc("validar_convite", { p_token: token });
       const resultado = Array.isArray(data) ? data[0] : data;
-      if (!error && resultado?.valido && resultado?.tipo === "medico") setTokenValid(true);
+      if (!error && resultado?.valido && resultado?.tipo === "medico") {
+        setTokenValid(true);
+        setClinica(resultado.tenant_nome ?? null);
+      }
       setValidating(false);
     })();
   }, [token]);
@@ -237,7 +241,9 @@ export default function CadastroMedico() {
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Receituários</p>
           <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Cadastro de Médico</h1>
           <p className="text-sm text-muted-foreground">
-            Configure sua conta e assinatura digital para os receituários.
+            {clinica
+              ? <>Você foi convidado para <strong>{clinica}</strong>. Configure sua conta e assinatura digital.</>
+              : "Configure sua conta e assinatura digital para os receituários."}
           </p>
         </div>
 
