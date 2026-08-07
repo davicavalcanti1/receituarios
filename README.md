@@ -27,7 +27,10 @@ supabase/migrations/         # 4 arquivos, ver nota abaixo
 
 ### Migrations
 
-`supabase/migrations/20260807120000_schema_proprio_receituarios.sql` — **Fase 1**: cria o schema `receituarios` e corta a dependência do core da Imago. Ver "Independência" abaixo.
+| Arquivo | Fase |
+|---|---|
+| `20260807120000_schema_proprio_receituarios.sql` | **1** — cria o schema `receituarios`, corta a dependência do core da Imago |
+| `20260807130000_copia_dados_da_imago.sql` | **2** — copia `public.prescription_*` → `receituarios.*` |
 
 As 4 migrations antigas (schema `public`, era controleoperacional) foram movidas para `supabase/legado/` — já estão aplicadas no banco da Imago por outro repositório e não devem ser reaplicadas daqui. Ver `supabase/legado/README.md`.
 
@@ -55,13 +58,26 @@ Colunas em português; os **valores** de status seguem em inglês (`draft`, `imp
 
 **Convite:** a policy `anon` enumerável saiu. O cadastro público valida pela RPC `receituarios.validar_convite(token)`, que devolve só validade e tipo.
 
+## Cópia dos dados (Fase 2 — 07/ago/2026)
+
+`INSERT … SELECT` dentro do mesmo banco: nada de export, nada de recriar usuário. **Os UUIDs são preservados**, inclusive os de `auth.users`, então autoria e atribuição de médico ficam intactas. Idempotente (`ON CONFLICT (id) DO NOTHING`) e **não apaga nada** em `public.*` — a Imago continua rodando até a Fase 4.
+
+Estado da origem conferido antes de escrever: 46 lotes / 603 itens, **tenant único**, todo `source_type` = `manual_import`, status de item só `draft`/`signed`.
+
+- **Médicos** entram com **`ativo = false`**. Os 2 cadastros são de teste, mas 14 lotes (10 assinados) apontam para eles — sem a linha, o histórico perde nome, CRM e assinatura. Inativos, aparecem no histórico e ficam fora do seletor de atribuição.
+- **Staff (`usuarios`) não é copiado** — não há mapeamento confiável das roles da Imago para `admin`/`operador`. Entra pelo `bootstrap_admin()` e por convite.
+- `templates` / `procedure_mappings` / `outputs` não são copiados: **0 linhas** na origem.
+- O tenant é **derivado dos lotes**, não hardcoded. Se aparecer mais de um, a migration aborta em vez de misturar dados.
+- **`pdf_assinado_path` aponta para o bucket antigo.** SQL não copia blob de storage, então os arquivos não são movidos. Hoje nenhuma tela lê essa coluna (o PDF é sempre regerado do `payload`), então não quebra nada — persistência real fica para a Fase 6.
+- No fim, confere as contagens e **falha** se faltou linha.
+
 ### Para aplicar
 
-1. `supabase db push` (ou aplicar a migration pelo painel).
-2. **Obrigatório:** adicionar `receituarios` em Settings → API → **Exposed schemas**. Sem isso o PostgREST não enxerga nada e toda query volta 404.
+1. `supabase db push` (ou aplicar as migrations pelo painel), **na ordem** — a Fase 2 depende do schema da Fase 1.
+2. **Obrigatório:** adicionar `receituarios` em Settings → API → **Exposed schemas** (hoje estão expostos `public`, `graphql_public`, `controlemidia`). Sem isso o PostgREST não enxerga nada e toda query volta 404.
 3. Logar com o usuário que será admin e chamar `bootstrap_admin()`.
 
-Fases 2 (copiar os 46 lotes / 603 itens), 3 (apontar o app) e 4 (mergear `chore-spinoff-receituarios` no controleoperacional) ainda não foram feitas — **o app continua lendo `public.prescription_*`**.
+Fases 3 (apontar o app) e 4 (mergear `chore-spinoff-receituarios` no controleoperacional) ainda não foram feitas — **o app continua lendo `public.prescription_*`**.
 
 ## Fase 0 — o que foi recriado (04/ago/2026)
 
