@@ -1,11 +1,15 @@
-export const PRESCRIPTION_TEMPLATE_TYPES = [
+// Os VALORES continuam em inglês, iguais aos do banco (ver Fase 1): trocá-los
+// exigiria migrar 46 lotes e reescrever os mapas de label das telas sem ganho
+// nenhum.
+
+export const TIPOS_RECEITA = [
   "anestesia_dr_felix",
   "longactil",
   "procedimentos_dia",
   "custom",
 ] as const;
 
-export const PRESCRIPTION_JOB_STATUSES = [
+export const STATUS_LOTE = [
   "draft",
   "imported",
   "review_pending",
@@ -15,7 +19,7 @@ export const PRESCRIPTION_JOB_STATUSES = [
   "cancelled",
 ] as const;
 
-export const PRESCRIPTION_ITEM_STATUSES = [
+export const STATUS_ITEM = [
   "draft",
   "validated",
   "review_pending",
@@ -25,25 +29,30 @@ export const PRESCRIPTION_ITEM_STATUSES = [
   "cancelled",
 ] as const;
 
-export type PrescriptionTemplateType = (typeof PRESCRIPTION_TEMPLATE_TYPES)[number];
-export type PrescriptionJobStatus = (typeof PRESCRIPTION_JOB_STATUSES)[number];
-export type PrescriptionItemStatus = (typeof PRESCRIPTION_ITEM_STATUSES)[number];
+export type TipoReceita = (typeof TIPOS_RECEITA)[number];
+export type StatusLote  = (typeof STATUS_LOTE)[number];
+export type StatusItem  = (typeof STATUS_ITEM)[number];
 
-export interface PrescriptionJobSummary {
+export interface Lote {
   id: string;
-  title: string;
-  jobType: PrescriptionTemplateType;
-  status: PrescriptionJobStatus;
-  totalItems: number;
-  signedItems: number;
-  updatedAt: string | null;
+  titulo: string;
+  tipo: TipoReceita;
+  status: StatusLote;
+  total_itens: number;
+  itens_assinados: number;
+  medico_id: string | null;
+  created_at: string;
+  updated_at: string | null;
 }
 
-export interface PrescriptionOverview {
-  schemaReady: boolean;
-  templatesCount: number;
-  activeJobsCount: number;
-  pendingSignatureCount: number;
-  signedItemsCount: number;
-  recentJobs: PrescriptionJobSummary[];
+export interface LoteItem {
+  id: string;
+  sequencia: number;
+  status: StatusItem;
+  paciente_nome: string;
+  data_exame: string | null;
+  procedimento: string | null;
+  setor: string | null;
+  medico_nome: string | null;
+  payload: Record<string, unknown>;
 }

@@ -64,11 +64,11 @@ function ehEegIgorGondim(exame: string | undefined, medico: string | undefined):
 // e cancelados. A_CONFIRMAR e CONFIRMADO entram porque já têm data definida.
 const SITUACOES_EXCLUIR: number[] = [SITUACAO.MARCADO, SITUACAO.CANCELADO];
 
-interface Medico { id: string; full_name: string; crm: string | null; especialidade: string | null; }
+interface Medico { id: string; nome: string; crm: string | null; especialidade: string | null; }
 
 export default function NovoLoteReceituario() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { user } = useAuth();
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [gerando, setGerando] = useState(false);
@@ -82,31 +82,17 @@ export default function NovoLoteReceituario() {
   const [medicoId, setMedicoId] = useState<string>("");
 
   useEffect(() => {
-    if (!profile?.tenant_id) return;
     (async () => {
-      // Busca em duas etapas: user_roles não tem FK direta pra profiles
-      const { data: roles } = await (supabase as any)
-        .from("user_roles")
-        .select("user_id")
-        .eq("tenant_id", profile.tenant_id)
-        .eq("role", "medico");
-
-      const ids = (roles ?? []).map((r: any) => r.user_id as string);
-      if (!ids.length) return;
-
-      const { data: profs } = await (supabase as any)
-        .from("profiles")
-        .select("id, full_name, crm, especialidade")
-        .in("id", ids);
-
-      setMedicos((profs ?? []).map((p: any) => ({
-        id:            p.id,
-        full_name:     p.full_name,
-        crm:           p.crm,
-        especialidade: p.especialidade,
-      })));
+      // Uma query só — antes eram duas, porque user_roles não tinha FK pra
+      // profiles. Médicos inativos ficam fora da atribuição.
+      const { data } = await supabase
+        .from("medicos")
+        .select("id, nome, crm, especialidade")
+        .eq("ativo", true)
+        .order("nome");
+      setMedicos((data ?? []) as Medico[]);
     })();
-  }, [profile?.tenant_id]);
+  }, []);
 
   // Busca no NetRis
   const [dataInicial, setDataInicial] = useState(hojeISO());
@@ -258,7 +244,7 @@ export default function NovoLoteReceituario() {
                           <CheckCircle2 className="h-3.5 w-3.5 text-white" />
                         </span>
                       )}
-                      <p className="font-semibold text-sm text-foreground pr-6">{m.full_name}</p>
+                      <p className="font-semibold text-sm text-foreground pr-6">{m.nome}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {[m.especialidade, m.crm].filter(Boolean).join(" · ")}
                       </p>
@@ -270,7 +256,7 @@ export default function NovoLoteReceituario() {
               {medicoId ? (
                 <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 dark:bg-emerald-950/20 dark:text-emerald-400 rounded-lg px-3 py-2">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
-                  <span>Médico selecionado: <strong>{medicos.find(m => m.id === medicoId)?.full_name}</strong></span>
+                  <span>Médico selecionado: <strong>{medicos.find(m => m.id === medicoId)?.nome}</strong></span>
                 </div>
               ) : (
                 <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
@@ -447,44 +433,28 @@ export default function NovoLoteReceituario() {
                     setGerando(true);
                     try {
                       // Salva o lote pra permitir rebaixar o PDF depois
-                      const tenantId = profile?.tenant_id;
-                      if (tenantId) {
-                        try {
-                          const tipoLabel = TIPOS.find(t => t.id === tipo)?.label ?? tipo;
-                          console.info("[NovoLote] medicoId selecionado:", medicoId || "(nenhum)");
-                          const lote = await receituariosService.criarLote({
-                            tenantId,
-                            userId:       profile?.id,
-                            tipo,
-                            titulo:       `${tipoLabel} — ${new Date().toLocaleDateString("pt-BR")}`,
-                            linhas:       resultado.linhas,
-                            doctorUserId: medicoId || undefined,
-                          });
-                          console.info("[NovoLote] lote criado:", lote);
-                          // Notifica o médico se foi atribuído
-                          if (medicoId && lote?.id) {
-                            await (supabase as any).from("sys_notifications").insert({
-                              user_id:   medicoId,
-                              tenant_id: tenantId,
-                              title:     "Novo lote para assinar",
-                              body:      `Lote atribuído a você: ${tipoLabel} — ${new Date().toLocaleDateString("pt-BR")}`,
-                              type:      "receituario_atribuido",
-                              data:      { job_id: lote.id },
-                            });
-                          }
-                          qc.invalidateQueries({ queryKey: ["todos-lotes"] });
-                          toast.success("Lote salvo!", {
-                            description: medicoId
-                              ? "Médico notificado. Baixe o PDF na lista de lotes."
-                              : "Lote salvo. Baixe o PDF na lista de lotes.",
-                          });
-                          navigate("/receituarios");
-                          return; // não baixa o PDF automaticamente
-                        } catch (err: any) {
-                          logError("[NovoLote] erro ao salvar:", err);
-                          toast.error("Lote não foi salvo.", { description: err?.message ?? String(err) });
-                        }
-                      }
+                      const tipoLabel = TIPOS.find(t => t.id === tipo)?.label ?? tipo;
+                      await receituariosService.criarLote({
+                        userId:   user?.id,
+                        tipo,
+                        titulo:   `${tipoLabel} — ${new Date().toLocaleDateString("pt-BR")}`,
+                        linhas:   resultado.linhas,
+                        medicoId: medicoId || undefined,
+                      });
+                      // A notificação via sys_notifications saiu na Fase 3: era
+                      // tabela do core da Imago, e o standalone não tem central
+                      // de notificações. O lote aparece na caixa de entrada do
+                      // médico assim que é atribuído.
+                      qc.invalidateQueries({ queryKey: ["todos-lotes"] });
+                      toast.success("Lote salvo!", {
+                        description: medicoId
+                          ? "Já está na caixa de entrada do médico. Baixe o PDF na lista de lotes."
+                          : "Lote salvo. Baixe o PDF na lista de lotes.",
+                      });
+                      navigate("/receituarios");
+                    } catch (err: any) {
+                      logError("[NovoLote] erro ao salvar:", err);
+                      toast.error("Lote não foi salvo.", { description: err?.message ?? String(err) });
                     } finally {
                       setGerando(false);
                     }

@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "@/shared/contexts/AuthContext";
 import Login from "@/pages/Login";
 import CadastroMedico from "@/pages/CadastroMedico";
+import SemAcesso from "@/pages/SemAcesso";
 import ReceituariosPage from "@/features/receituarios/pages/ReceituariosPage";
 import NovoLoteReceituario from "@/features/receituarios/pages/NovoLoteReceituario";
 import MedicoPortalPage from "@/features/receituarios/pages/MedicoPortalPage";
@@ -15,7 +16,7 @@ import "./index.css";
 const queryClient = new QueryClient();
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, papel, loading } = useAuth();
   if (loading) {
     return (
       <div className="min-h-screen grid place-items-center bg-background">
@@ -24,6 +25,9 @@ function RequireAuth({ children }: { children: ReactNode }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
+  // Estar autenticado não basta: o auth.users é compartilhado com o sistema da
+  // Imago, então é preciso ter vínculo com ESTE módulo (staff ou médico).
+  if (!papel) return <SemAcesso />;
   return <>{children}</>;
 }
 

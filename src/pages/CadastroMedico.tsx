@@ -2,10 +2,10 @@
 // /cadastro/medico?token=<invite_token>
 //
 // Fluxo de cadastro do médico via link de convite gerado pelo admin:
-//   1. Valida o token de convite (tabela invite_tokens)
+//   1. Valida o token pela RPC receituarios.validar_convite
 //   2. Médico preenche nome, email, senha, CRM e especialidade
 //   3. Médico desenha a assinatura no canvas (obrigatório)
-//   4. Cria a conta → perfil com role=medico + signature_data + crm
+//   4. O servidor cria a conta e a linha em receituarios.medicos
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useRef, useEffect } from "react";
@@ -137,35 +137,27 @@ export default function CadastroMedico() {
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(true);
   const [tokenValid, setTokenValid] = useState(false);
-  const [tenantId, setTenantId] = useState<string | null>(null);
   const [signaturePng, setSignaturePng] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
   const form = useForm<FormData>({ resolver: zodResolver(schema) });
 
-  // Valida o token de convite ao carregar
+  // Valida o token de convite ao carregar.
+  // Fase 3: passou a usar a RPC validar_convite (SECURITY DEFINER) em vez de um
+  // SELECT anônimo na tabela — a policy antiga deixava a lista de convites
+  // vivos enumerável por quem tivesse a anon key.
   useEffect(() => {
     if (!token) { setValidating(false); return; }
     (async () => {
-      const { data, error } = await (supabase as any)
-        .from("medico_invite_tokens")
-        .select("tenant_id, used_at, expires_at")
-        .eq("token", token)
-        .maybeSingle();
-
-      if (error || !data) { setValidating(false); return; }
-      if (data.used_at) { setValidating(false); return; }
-      if (data.expires_at && new Date(data.expires_at) < new Date()) { setValidating(false); return; }
-
-      setTenantId(data.tenant_id);
-      setTokenValid(true);
+      const { data, error } = await supabase.rpc("validar_convite", { p_token: token });
+      const resultado = Array.isArray(data) ? data[0] : data;
+      if (!error && resultado?.valido && resultado?.tipo === "medico") setTokenValid(true);
       setValidating(false);
     })();
   }, [token]);
 
   const onSubmit = async (values: FormData) => {
     if (!signaturePng) { toast.error("Você precisa desenhar e salvar sua assinatura"); return; }
-    if (!tenantId)     { toast.error("Token inválido"); return; }
 
     setLoading(true);
     try {

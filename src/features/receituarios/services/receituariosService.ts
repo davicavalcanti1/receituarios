@@ -1,5 +1,4 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { PrescriptionJobSummary, PrescriptionOverview } from "@/features/receituarios/types";
 import type { LinhaLote } from "@/features/receituarios/lib/parseLote";
 
 function brParaIso(d: string): string | null {
@@ -7,157 +6,64 @@ function brParaIso(d: string): string | null {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
 }
 
-const EMPTY_OVERVIEW: PrescriptionOverview = {
-  schemaReady: false,
-  templatesCount: 0,
-  activeJobsCount: 0,
-  pendingSignatureCount: 0,
-  signedItemsCount: 0,
-  recentJobs: [],
-};
-
-function isMissingRelation(error: unknown): boolean {
-  const err = error as { code?: string; message?: string; details?: string } | null;
-  if (!err) return false;
-  if (err.code === "42P01") return true;
-  const haystack = `${err.message ?? ""} ${err.details ?? ""}`;
-  return /relation .* does not exist/i.test(haystack);
-}
-
 export const receituariosService = {
-  async getOverview(tenantId: string): Promise<PrescriptionOverview> {
-    const [
-      templatesResult,
-      jobsResult,
-      pendingItemsResult,
-      signedItemsResult,
-      recentJobsResult,
-    ] = await Promise.all([
-      (supabase as any)
-        .from("prescription_templates")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenantId)
-        .eq("is_active", true),
-      (supabase as any)
-        .from("prescription_jobs")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenantId)
-        .in("status", ["draft", "imported", "review_pending", "signature_pending", "partially_signed"]),
-      (supabase as any)
-        .from("prescription_job_items")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenantId)
-        .eq("status", "signature_pending"),
-      (supabase as any)
-        .from("prescription_job_items")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenantId)
-        .eq("status", "signed"),
-      (supabase as any)
-        .from("prescription_jobs")
-        .select("id, title, job_type, status, total_items, signed_items, updated_at")
-        .eq("tenant_id", tenantId)
-        .order("updated_at", { ascending: false })
-        .limit(6),
-    ]);
-
-    const errors = [
-      templatesResult.error,
-      jobsResult.error,
-      pendingItemsResult.error,
-      signedItemsResult.error,
-      recentJobsResult.error,
-    ].filter(Boolean);
-
-    if (errors.some(isMissingRelation)) {
-      return EMPTY_OVERVIEW;
-    }
-
-    const unexpectedError = errors[0];
-    if (unexpectedError) {
-      throw unexpectedError;
-    }
-
-    const recentJobs = ((recentJobsResult.data ?? []) as any[]).map(
-      (job): PrescriptionJobSummary => ({
-        id: job.id,
-        title: job.title,
-        jobType: job.job_type,
-        status: job.status,
-        totalItems: job.total_items ?? 0,
-        signedItems: job.signed_items ?? 0,
-        updatedAt: job.updated_at ?? null,
-      }),
-    );
-
-    return {
-      schemaReady: true,
-      templatesCount: templatesResult.count ?? 0,
-      activeJobsCount: jobsResult.count ?? 0,
-      pendingSignatureCount: pendingItemsResult.count ?? 0,
-      signedItemsCount: signedItemsResult.count ?? 0,
-      recentJobs,
-    };
-  },
-
-  // Salva o lote (job + itens). A LinhaLote completa fica em row_payload pra
+  // Salva o lote (lote + itens). A LinhaLote completa fica em `payload` pra
   // permitir regenerar o mesmo PDF depois sem armazenar o arquivo.
   async criarLote(params: {
-    tenantId: string; userId?: string | null; tipo: string; titulo: string;
-    linhas: LinhaLote[]; doctorUserId?: string;
+    userId?: string | null; tipo: string; titulo: string;
+    linhas: LinhaLote[]; medicoId?: string;
   }): Promise<{ id: string }> {
-    const { tenantId, userId, tipo, titulo, linhas, doctorUserId } = params;
+    const { userId, tipo, titulo, linhas, medicoId } = params;
     const validas = linhas.filter(l => l.erros.length === 0);
 
-    const { data: job, error: jobErr } = await (supabase as any)
-      .from("prescription_jobs")
+    const { data: lote, error: loteErr } = await supabase
+      .from("lotes")
       .insert({
-        tenant_id:      tenantId,
-        title:          titulo,
-        job_type:       tipo,
-        status:         doctorUserId ? "signature_pending" : "imported",
-        source_type:    "manual_import",
-        total_items:    validas.length,
-        requested_by:   userId ?? null,
-        doctor_user_id: doctorUserId ?? null,
+        titulo,
+        tipo,
+        status:     medicoId ? "signature_pending" : "imported",
+        origem:     "manual_import",
+        total_itens: validas.length,
+        criado_por: userId ?? null,
+        medico_id:  medicoId ?? null,
+        enviado_para_assinatura_em: medicoId ? new Date().toISOString() : null,
       })
       .select("id")
       .single();
-    if (jobErr) throw jobErr;
+    if (loteErr) throw loteErr;
 
-    const items = validas.map((l, idx) => ({
-      tenant_id: tenantId,
-      job_id: job.id,
-      sequence: idx + 1,
-      status: "draft",
-      patient_name: l.paciente,
-      exam_date: brParaIso(l.data_exame),
-      procedure_name: l.procedimento || null,
-      setor: l.setor || null,
-      doctor_name: l.medico || null,
-      row_payload: l,
+    const itens = validas.map((l, idx) => ({
+      lote_id:       lote.id,
+      sequencia:     idx + 1,
+      status:        "draft",
+      paciente_nome: l.paciente,
+      data_exame:    brParaIso(l.data_exame),
+      procedimento:  l.procedimento || null,
+      setor:         l.setor || null,
+      medico_nome:   l.medico || null,
+      payload:       l,
     }));
-    if (items.length) {
-      const { error: itErr } = await (supabase as any).from("prescription_job_items").insert(items);
+    if (itens.length) {
+      const { error: itErr } = await supabase.from("lote_itens").insert(itens);
       if (itErr) throw itErr;
     }
-    return { id: job.id as string };
+    return { id: lote.id as string };
   },
 
-  // Carrega as linhas de um lote salvo (a partir de row_payload) pra regenerar o PDF.
-  async getLinhasDoLote(jobId: string): Promise<{ jobType: string; linhas: LinhaLote[] }> {
-    const { data: job, error: jErr } = await (supabase as any)
-      .from("prescription_jobs").select("job_type").eq("id", jobId).single();
-    if (jErr) throw jErr;
+  // Carrega as linhas de um lote salvo (a partir de `payload`) pra regerar o PDF.
+  async getLinhasDoLote(loteId: string): Promise<{ tipo: string; linhas: LinhaLote[] }> {
+    const { data: lote, error: lErr } = await supabase
+      .from("lotes").select("tipo").eq("id", loteId).single();
+    if (lErr) throw lErr;
 
-    const { data: items, error: iErr } = await (supabase as any)
-      .from("prescription_job_items")
-      .select("row_payload, sequence")
-      .eq("job_id", jobId)
-      .order("sequence", { ascending: true });
+    const { data: itens, error: iErr } = await supabase
+      .from("lote_itens")
+      .select("payload, sequencia")
+      .eq("lote_id", loteId)
+      .order("sequencia", { ascending: true });
     if (iErr) throw iErr;
 
-    const linhas = (items ?? []).map((it: any) => it.row_payload as LinhaLote);
-    return { jobType: job.job_type as string, linhas };
+    const linhas = (itens ?? []).map(it => it.payload as LinhaLote);
+    return { tipo: lote.tipo as string, linhas };
   },
 };

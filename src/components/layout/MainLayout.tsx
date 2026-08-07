@@ -18,7 +18,7 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children, title, subtitle, eyebrow, headerActions }: MainLayoutProps) {
-  const { profile, signOut, user } = useAuth();
+  const { usuario, medico, signOut, user } = useAuth();
   const navigate = useNavigate();
 
   const content = title ? (
@@ -44,7 +44,7 @@ export function MainLayout({ children, title, subtitle, eyebrow, headerActions }
         </button>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground hidden sm:block">
-            {profile?.full_name ?? user?.email}
+            {usuario?.nome ?? medico?.nome ?? user?.email}
           </span>
           <Button variant="ghost" size="sm" onClick={signOut} className="gap-1.5 text-muted-foreground">
             <LogOut className="h-4 w-4" /> Sair

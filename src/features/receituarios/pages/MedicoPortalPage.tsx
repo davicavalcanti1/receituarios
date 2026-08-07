@@ -17,19 +17,19 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/PageHeader";
 import imagoLogo from "@/assets/imago-logo.png";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/shared/contexts/AuthContext";
+import { useAuth, type Medico as MedicoCtx } from "@/shared/contexts/AuthContext";
 import { gerarPdfLoteAssinado } from "../lib/gerarPdf";
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface Lote {
-  id: string; title: string; job_type: string; status: string;
-  total_items: number; signed_items: number; created_at: string;
+  id: string; titulo: string; tipo: string; status: string;
+  total_itens: number; itens_assinados: number; created_at: string;
 }
 interface LoteItem {
-  id: string; sequence: number; patient_name: string;
-  exam_date: string | null; procedure_name: string | null;
+  id: string; sequencia: number; paciente_nome: string;
+  data_exame: string | null; procedimento: string | null;
   setor: string | null; status: string;
-  row_payload: Record<string, unknown>;
+  payload: Record<string, unknown>;
 }
 
 const STATUS: Record<string, { label: string; color: string }> = {
@@ -106,68 +106,72 @@ function AssinaturaCanvas({ existing, onSave, onClear, saved }: {
 }
 
 // ── Detalhe ───────────────────────────────────────────────────────────────────
-function LoteDetalhe({ lote, perfil, onBack, onSigned }: {
-  lote: Lote; perfil: { full_name?: string; crm?: string; especialidade?: string; signature_data?: string } | null;
+function LoteDetalhe({ lote, medico, onBack, onSigned }: {
+  lote: Lote; medico: MedicoCtx | null;
   onBack: () => void; onSigned: () => void;
 }) {
   const qc = useQueryClient();
-  const { profile } = useAuth();
-  const [signaturePng, setSignaturePng] = useState<string | null>(perfil?.signature_data ?? null);
+  const { user, recarregar } = useAuth();
+  const [signaturePng, setSignaturePng] = useState<string | null>(medico?.assinatura_png ?? null);
   const [signing, setSigning] = useState(false);
 
   const { data: items = [], isLoading } = useQuery<LoteItem[]>({
-    queryKey: ["lote-items", lote.id],
+    queryKey: ["lote-itens", lote.id],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("prescription_job_items")
-        .select("id, sequence, patient_name, exam_date, procedure_name, setor, status, row_payload")
-        .eq("job_id", lote.id).order("sequence");
+      const { data, error } = await supabase
+        .from("lote_itens")
+        .select("id, sequencia, paciente_nome, data_exame, procedimento, setor, status, payload")
+        .eq("lote_id", lote.id).order("sequencia");
       if (error) throw error;
       return data ?? [];
     },
   });
 
+  // Abrir o lote marca "em análise". O ref evita o disparo duplicado do
+  // StrictMode (e de qualquer re-render) — antes o UPDATE saía duas vezes.
+  const marcouRevisao = useRef(false);
   useEffect(() => {
-    if (lote.status === "signature_pending") {
-      (supabase as any).from("prescription_jobs")
-        .update({ status: "review_pending", updated_at: new Date().toISOString() })
-        .eq("id", lote.id)
-        .then(() => qc.invalidateQueries({ queryKey: ["meus-lotes"] }));
-    }
+    if (lote.status !== "signature_pending" || marcouRevisao.current) return;
+    marcouRevisao.current = true;
+    supabase.from("lotes")
+      .update({ status: "review_pending" })
+      .eq("id", lote.id)
+      .then(() => qc.invalidateQueries({ queryKey: ["meus-lotes"] }));
   }, [lote.id, lote.status, qc]);
 
   async function assinar() {
     if (!signaturePng) { toast.error("Configure sua assinatura"); return; }
     setSigning(true);
     try {
-      const linhas = items.map(it => it.row_payload as any);
+      const linhas = items.map(it => it.payload as any);
       const { blob, receitas } = await gerarPdfLoteAssinado(
-        lote.job_type as any, linhas, signaturePng,
-        { nome: perfil?.full_name ?? "", crm: perfil?.crm ?? "", especialidade: perfil?.especialidade ?? "" },
+        lote.tipo as any, linhas, signaturePng,
+        { nome: medico?.nome ?? "", crm: medico?.crm ?? "", especialidade: medico?.especialidade ?? "" },
       );
-      const tenantId = profile?.tenant_id;
-      const fileName = `${tenantId}/${lote.id}/assinado_${Date.now()}.pdf`;
-      const { error: uploadError } = await (supabase as any).storage
-        .from("receituarios-pdfs").upload(fileName, blob, { upsert: true });
+      // Bucket próprio, path <lote_id>/… — o tenant deixou de existir.
+      const fileName = `${lote.id}/assinado_${Date.now()}.pdf`;
+      const { error: uploadError } = await supabase.storage
+        .from("receituarios").upload(fileName, blob, { upsert: true });
       if (uploadError) console.warn("[MedicoPortal] upload:", uploadError.message);
 
-      const { error: jobUpdateError } = await (supabase as any).from("prescription_jobs").update({
-        status: "completed", completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(), signed_items: items.length,
+      const { error: loteUpdateError } = await supabase.from("lotes").update({
+        status: "completed", concluido_em: new Date().toISOString(),
+        itens_assinados: items.length,
       }).eq("id", lote.id);
-      if (jobUpdateError) throw new Error(`Erro ao atualizar lote: ${jobUpdateError.message}`);
+      if (loteUpdateError) throw new Error(`Erro ao atualizar lote: ${loteUpdateError.message}`);
 
-      const { error: itemsUpdateError } = await (supabase as any).from("prescription_job_items")
-        .update({ status: "signed", signed_at: new Date().toISOString(), signed_pdf_path: fileName })
-        .eq("job_id", lote.id);
+      const { error: itemsUpdateError } = await supabase.from("lote_itens")
+        .update({ status: "signed", assinado_em: new Date().toISOString(), pdf_assinado_path: fileName })
+        .eq("lote_id", lote.id);
       if (itemsUpdateError) throw new Error(`Erro ao atualizar itens: ${itemsUpdateError.message}`);
 
-      await (supabase as any).from("profiles")
-        .update({ signature_data: signaturePng, signature_configured_at: new Date().toISOString() })
-        .eq("id", profile?.id);
+      await supabase.from("medicos")
+        .update({ assinatura_png: signaturePng, assinatura_atualizada_em: new Date().toISOString() })
+        .eq("id", user?.id);
+      await recarregar();
 
       const url = URL.createObjectURL(blob);
-      Object.assign(document.createElement("a"), { href: url, download: `receituario_${lote.title}.pdf` }).click();
+      Object.assign(document.createElement("a"), { href: url, download: `receituario_${lote.titulo}.pdf` }).click();
       URL.revokeObjectURL(url);
 
       toast.success(`${receitas} receita(s) assinadas e baixadas`);
@@ -189,8 +193,8 @@ function LoteDetalhe({ lote, perfil, onBack, onSigned }: {
           <ArrowLeft className="h-4 w-4" /> Voltar
         </Button>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-bold uppercase tracking-widest text-primary">{JOB_LABELS[lote.job_type] ?? "Lote"}</p>
-          <h2 className="text-lg font-extrabold tracking-tight text-foreground truncate">{lote.title}</h2>
+          <p className="text-xs font-bold uppercase tracking-widest text-primary">{JOB_LABELS[lote.tipo] ?? "Lote"}</p>
+          <h2 className="text-lg font-extrabold tracking-tight text-foreground truncate">{lote.titulo}</h2>
         </div>
         <Badge className={st.color}>{st.label}</Badge>
       </div>
@@ -209,10 +213,10 @@ function LoteDetalhe({ lote, perfil, onBack, onSigned }: {
           <div className="divide-y divide-border/50 max-h-72 overflow-y-auto">
             {items.map(item => (
               <div key={item.id} className="flex items-center gap-3 px-4 py-3">
-                <span className="text-xs text-muted-foreground tabular-nums w-5 text-right shrink-0 font-mono">{item.sequence}</span>
+                <span className="text-xs text-muted-foreground tabular-nums w-5 text-right shrink-0 font-mono">{item.sequencia}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{item.patient_name}</p>
-                  {item.procedure_name && <p className="text-xs text-muted-foreground truncate">{item.procedure_name}</p>}
+                  <p className="text-sm font-medium text-foreground truncate">{item.paciente_nome}</p>
+                  {item.procedimento && <p className="text-xs text-muted-foreground truncate">{item.procedimento}</p>}
                 </div>
                 {item.status === "signed" && <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />}
               </div>
@@ -228,7 +232,7 @@ function LoteDetalhe({ lote, perfil, onBack, onSigned }: {
           <div>
             <p className="font-semibold text-emerald-800 dark:text-emerald-300">Lote assinado com sucesso</p>
             <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">
-              {lote.total_items} receita{lote.total_items !== 1 ? "s" : ""} assinada{lote.total_items !== 1 ? "s" : ""} digitalmente
+              {lote.total_itens} receita{lote.total_itens !== 1 ? "s" : ""} assinada{lote.total_itens !== 1 ? "s" : ""} digitalmente
             </p>
           </div>
         </div>
@@ -245,7 +249,7 @@ function LoteDetalhe({ lote, perfil, onBack, onSigned }: {
                 : "Desenhe sua assinatura. Será aplicada em todas as receitas deste lote."}
             </p>
             <AssinaturaCanvas
-              existing={perfil?.signature_data}
+              existing={medico?.assinatura_png}
               saved={!!signaturePng}
               onSave={setSignaturePng}
               onClear={() => setSignaturePng(null)}
@@ -264,29 +268,19 @@ function LoteDetalhe({ lote, perfil, onBack, onSigned }: {
 
 // ── Página principal ──────────────────────────────────────────────────────────
 export default function MedicoPortalPage() {
-  const { profile } = useAuth();
+  // O médico já vem carregado do AuthContext — não precisa de query própria.
+  const { user, medico } = useAuth();
   const [selectedLote, setSelectedLote] = useState<Lote | null>(null);
-  const userId = profile?.id;
-
-  const { data: perfil } = useQuery({
-    queryKey: ["perfil-medico", userId],
-    queryFn: async () => {
-      const { data } = await (supabase as any).from("profiles")
-        .select("full_name, crm, especialidade, signature_data")
-        .eq("id", userId).maybeSingle();
-      return data;
-    },
-    enabled: !!userId,
-  });
+  const userId = user?.id;
 
   const { data: lotes = [], isLoading, error: lotesError } = useQuery<Lote[]>({
     queryKey: ["meus-lotes", userId],
     queryFn: async () => {
       // Busca todos os lotes atribuídos ao médico, incluindo "imported"
       // (pode acontecer se o lote foi criado antes da feature de status automático)
-      const { data, error } = await (supabase as any).from("prescription_jobs")
-        .select("id, title, job_type, status, total_items, signed_items, created_at")
-        .eq("doctor_user_id", userId)
+      const { data, error } = await supabase.from("lotes")
+        .select("id, titulo, tipo, status, total_itens, itens_assinados, created_at")
+        .eq("medico_id", userId)
         .not("status", "eq", "cancelled")
         .order("created_at", { ascending: false });
       if (error) throw new Error(error.message);
@@ -307,9 +301,9 @@ export default function MedicoPortalPage() {
           <div className="flex-1 min-w-0">
             <span className="text-xs font-bold uppercase tracking-widest text-primary">Receituários</span>
           </div>
-          {(perfil?.crm || perfil?.especialidade) && (
+          {(medico?.crm || medico?.especialidade) && (
             <p className="text-xs text-muted-foreground hidden sm:block">
-              {[perfil.especialidade, perfil.crm ? `CRM ${perfil.crm}` : null].filter(Boolean).join(" · ")}
+              {[medico.especialidade, medico.crm ? `CRM ${medico.crm}` : null].filter(Boolean).join(" · ")}
             </p>
           )}
         </div>
@@ -319,7 +313,7 @@ export default function MedicoPortalPage() {
         {selectedLote ? (
           <LoteDetalhe
             lote={selectedLote}
-            perfil={perfil}
+            medico={medico}
             onBack={() => setSelectedLote(null)}
             onSigned={() => setSelectedLote(null)}
           />
@@ -327,8 +321,8 @@ export default function MedicoPortalPage() {
           <>
             <PageHeader
               eyebrow="Receituários"
-              title={perfil?.full_name ? `Dr${perfil.full_name.match(/^Ana |^Amanda /i) ? "a" : ""}. ${perfil.full_name.split(" ")[0]}` : "Meus Receituários"}
-              subtitle={[perfil?.especialidade, perfil?.crm ? `CRM ${perfil.crm}` : null].filter(Boolean).join(" · ") || "Lotes atribuídos para assinatura digital"}
+              title={medico?.nome ? `Dr${medico.nome.match(/^Ana |^Amanda /i) ? "a" : ""}. ${medico.nome.split(" ")[0]}` : "Meus Receituários"}
+              subtitle={[medico?.especialidade, medico?.crm ? `CRM ${medico.crm}` : null].filter(Boolean).join(" · ") || "Lotes atribuídos para assinatura digital"}
             />
 
             {/* Pendentes */}
@@ -369,10 +363,10 @@ export default function MedicoPortalPage() {
                           <FileText className="h-5 w-5 text-primary" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-foreground truncate">{lote.title}</p>
+                          <p className="text-sm font-semibold text-foreground truncate">{lote.titulo}</p>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <Badge className={cn("text-[10px] py-0", st.color)}>{st.label}</Badge>
-                            <span className="text-xs text-muted-foreground">{lote.total_items} paciente{lote.total_items !== 1 ? "s" : ""}</span>
+                            <span className="text-xs text-muted-foreground">{lote.total_itens} paciente{lote.total_itens !== 1 ? "s" : ""}</span>
                             <span className="text-xs text-muted-foreground">{format(new Date(lote.created_at), "d MMM", { locale: ptBR })}</span>
                           </div>
                         </div>
@@ -397,9 +391,9 @@ export default function MedicoPortalPage() {
                       className="w-full px-4 py-3 flex items-center gap-3 hover:bg-muted/40 transition-colors text-left group">
                       <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-foreground truncate">{lote.title}</p>
+                        <p className="text-sm text-foreground truncate">{lote.titulo}</p>
                         <p className="text-xs text-muted-foreground">
-                          {lote.total_items} receita{lote.total_items !== 1 ? "s" : ""} · {format(new Date(lote.created_at), "d MMM yyyy", { locale: ptBR })}
+                          {lote.total_itens} receita{lote.total_itens !== 1 ? "s" : ""} · {format(new Date(lote.created_at), "d MMM yyyy", { locale: ptBR })}
                         </p>
                       </div>
                       <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-muted-foreground shrink-0" />

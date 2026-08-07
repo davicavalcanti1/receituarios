@@ -3,16 +3,18 @@
 //
 // Rota pública (sem auth) para o médico completar o cadastro via link de convite.
 // Usa supabaseAdmin (service_role) para:
-//   1. Criar a conta no Supabase Auth
-//   2. Validar e consumir o token de convite
-//   3. Atualizar o perfil (crm, especialidade, signature_data)
-//   4. Inserir role "medico" em user_roles
+//   1. Validar e consumir o token de convite (receituarios.convites)
+//   2. Criar a conta no Supabase Auth
+//   3. Criar o registro em receituarios.medicos (com CRM e assinatura)
+//
+// Fase 3: não mexe mais em public.profiles nem em public.user_roles — o papel
+// do usuário agora é determinado por estar em receituarios.medicos.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Router } from "express";
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
-import { supabaseAdmin } from "../lib/supabase.js";
+import { rx } from "../lib/supabase.js";
 
 const router = Router();
 
@@ -42,27 +44,28 @@ router.post("/cadastro", limiter, async (req, res) => {
 
   const { token, fullName, email, password, crm, especialidade, signaturePng } = parsed.data;
 
-  // 1. Valida o token de convite
-  const { data: invite, error: inviteErr } = await supabaseAdmin
-    .from("medico_invite_tokens" as any)
-    .select("id, tenant_id, used_at, expires_at")
+  // 1. Valida o convite
+  const { data: convite, error: conviteErr } = await rx
+    .from("convites")
+    .select("id, tipo, usado_em, expira_em")
     .eq("token", token)
     .maybeSingle();
 
-  if (inviteErr || !invite) {
+  if (conviteErr || !convite) {
     return res.status(400).json({ error: "Token de convite inválido" });
   }
-  if ((invite as any).used_at) {
+  if (convite.tipo !== "medico") {
+    return res.status(400).json({ error: "Este convite não é de médico" });
+  }
+  if (convite.usado_em) {
     return res.status(400).json({ error: "Este link de convite já foi utilizado" });
   }
-  if (new Date((invite as any).expires_at) < new Date()) {
+  if (new Date(convite.expira_em) < new Date()) {
     return res.status(400).json({ error: "Este link de convite expirou" });
   }
 
-  const tenantId = (invite as any).tenant_id as string;
-
   // 2. Cria o usuário no Supabase Auth
-  const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
+  const { data: authData, error: authErr } = await rx.auth.admin.createUser({
     email,
     password,
     email_confirm: true,          // confirma automaticamente (sem email de verificação)
@@ -80,44 +83,36 @@ router.post("/cadastro", limiter, async (req, res) => {
   const userId = authData.user.id;
 
   try {
-    // 3. Aguarda o trigger criar o perfil (~500ms) e atualiza
-    await new Promise(r => setTimeout(r, 600));
-
-    const { error: profErr } = await supabaseAdmin
-      .from("profiles" as any)
+    // 3. Cria o médico. Não há mais espera por trigger: a linha em
+    //    receituarios.medicos é criada aqui, explicitamente.
+    const { error: medicoErr } = await rx
+      .from("medicos")
       .upsert({
-        id:                      userId,
-        tenant_id:               tenantId,
-        full_name:               fullName,
+        id:                       userId,
+        nome:                     fullName,
         email,
         crm,
         especialidade,
-        signature_data:          signaturePng,
-        signature_configured_at: new Date().toISOString(),
-        approved:                true,
-        is_active:               true,
+        assinatura_png:           signaturePng,
+        assinatura_atualizada_em: new Date().toISOString(),
+        ativo:                    true,
       }, { onConflict: "id" });
 
-    if (profErr) throw new Error(`Perfil: ${profErr.message}`);
+    if (medicoErr) throw new Error(`Médico: ${medicoErr.message}`);
 
-    // 4. Role medico em user_roles
-    const { error: roleErr } = await supabaseAdmin
-      .from("user_roles" as any)
-      .upsert({ user_id: userId, tenant_id: tenantId, role: "medico" }, { onConflict: "user_id,tenant_id" });
+    // 4. Consome o convite
+    const { error: conviteUpdErr } = await rx
+      .from("convites")
+      .update({ usado_em: new Date().toISOString(), usado_por: userId })
+      .eq("id", convite.id);
 
-    if (roleErr) throw new Error(`Role: ${roleErr.message}`);
-
-    // 5. Marca o token como usado
-    await supabaseAdmin
-      .from("medico_invite_tokens" as any)
-      .update({ used_at: new Date().toISOString(), used_by: userId })
-      .eq("token", token);
+    if (conviteUpdErr) throw new Error(`Convite: ${conviteUpdErr.message}`);
 
     return res.json({ ok: true });
 
   } catch (e: any) {
     // Rollback: remove o usuário criado para não deixar conta "zumbi"
-    await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
+    await rx.auth.admin.deleteUser(userId).catch(() => {});
     console.error("[medico-cadastro]", e?.message);
     return res.status(500).json({ error: "Erro ao configurar o cadastro", detail: e?.message });
   }

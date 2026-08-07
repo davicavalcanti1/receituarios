@@ -77,7 +77,25 @@ Estado da origem conferido antes de escrever: 46 lotes / 603 itens, **tenant ún
 2. **Obrigatório:** adicionar `receituarios` em Settings → API → **Exposed schemas** (hoje estão expostos `public`, `graphql_public`, `controlemidia`). Sem isso o PostgREST não enxerga nada e toda query volta 404.
 3. Logar com o usuário que será admin e chamar `bootstrap_admin()`.
 
-Fases 3 (apontar o app) e 4 (mergear `chore-spinoff-receituarios` no controleoperacional) ainda não foram feitas — **o app continua lendo `public.prescription_*`**.
+## O app apontado pro schema novo (Fase 3 — 07/ago/2026)
+
+O client Supabase passou a usar `db: { schema: "receituarios" }` — isso vale só para PostgREST; auth e storage não são afetados.
+
+**O papel do usuário mudou de fonte.** Não vem mais de `public.user_roles` (que aceitava N linhas por usuário e quebrava com `.maybeSingle()`), e sim de **qual tabela contém o usuário**: `usuarios` → staff (`admin`/`operador`), `medicos` → médico. Isso também elimina os dois conceitos de médico que conviviam (`medico` e `medico_prescritor`, com telas diferentes) — agora é um só.
+
+**Nova tela `SemAcesso`.** Estar autenticado não basta: o `auth.users` é compartilhado com a Imago, então qualquer usuário de lá consegue logar aqui. Quem não tem vínculo com o módulo cai nessa tela — que é também o único caminho de entrada do primeiro admin (botão que chama `bootstrap_admin()`).
+
+**Duas dependências do core que só apareceram ao mexer no código:**
+- `sys_notifications` (avisava o médico ao atribuir lote) — **removida**. É tabela do core da Imago e o standalone não tem central de notificações; o lote aparece na caixa de entrada do médico assim que é atribuído.
+- `prescription_templates`, usada só pelo `getOverview()` do service — **removido junto**, era código morto (nenhuma tela chamava, e a tabela tem 0 linhas).
+
+**Dois bugs corrigidos de passagem**, porque estavam nas linhas alteradas:
+- abrir um lote disparava o `UPDATE` de status **duas vezes** (StrictMode + re-render) — agora tem guard por `ref`;
+- `AuthContext` usava `.maybeSingle()` em `user_roles`, que estourava se o usuário tivesse mais de uma role.
+
+Typecheck limpo no front e no server; `npm run build` passa.
+
+Falta a Fase 4 (mergear `chore-spinoff-receituarios` no controleoperacional) — **só depois de validar este app contra o banco novo**, senão a Imago e o standalone gravam em lugares diferentes.
 
 ## Fase 0 — o que foi recriado (04/ago/2026)
 
